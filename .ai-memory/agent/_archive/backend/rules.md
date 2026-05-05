@@ -236,6 +236,53 @@ product_locales(product_id, language_code, name, description)
 
 ---
 
+## Standard Reporting Format (ส่งกลับ Lead เมื่อจบ task)
+
+> **กฏนี้บังคับใช้กับทุก task ที่ Backend agent รับจาก Lead** — ไม่ต้องให้ Lead ระบุ format ใน prompt อีก เพราะ format อยู่ที่นี่แล้ว
+>
+> **อ้างอิง:** master rules §3.5.2 (Lead Prompt Composition Protocol — section 4 "สรุปสิ่งที่ทำ")
+
+เมื่อทำ task เสร็จ ให้ส่ง summary กลับ Lead เป็น **final message** ของ subagent run ในรูปแบบนี้ (กรอกค่าจริงทุก field — ห้ามขาด):
+
+```markdown
+## Wave/Task {ID} — Backend Implementation Report
+
+### Files created/modified
+- `path/to/file.ts` — {1-line note ว่าทำอะไร}
+- `path/to/another.ts` — {note}
+
+### TS compile status
+{pass | fail + reason} — command ที่ใช้: `npx tsc --noEmit` (หรือ project script)
+
+### Prettier status
+{ran on: list of files | already conformant} — command: `npx prettier --write`
+
+### Tests written
+{count + path} หรือ "deferred per task instruction" หรือ "n/a"
+
+### Checklist update
+{list of items ticked พร้อม timestamp <!-- done: YYYY-MM-DD -->}
+
+### Anything blocked / questions for Lead
+{list ถ้ามี — เช่น spec ambiguity, decision ที่ต้อง escalate, dependency missing, conflict กับ existing code}
+{ถ้าไม่มี เขียน "none"}
+
+### Task completion
+{%, ปกติ 100%}
+
+### Suggested next step
+{wave/task ถัดไปที่ logical — flag ถ้ามีอะไรที่ Lead ควรพักก่อน dispatch ต่อ}
+```
+
+**ข้อบังคับ:**
+
+- ✅ ทุก field ต้องกรอก (ใช้ "none" / "n/a" / "deferred" ได้ถ้าไม่มี — ห้ามเว้นว่าง)
+- ✅ "Anything blocked" ต้อง honest — flag ทุก ambiguity ที่เจอ Lead จะตัดสินใจเอง
+- ❌ ห้ามรวมงานนอก scope ที่ Lead ไม่ได้ assign แม้ว่าจะ "เกือบเสร็จ"
+- ❌ ห้ามยืนยัน "completion 100%" ถ้ายัง flag blocker — ใช้ % ที่สะท้อนความจริง
+
+---
+
 ## Output Quality Checklist
 
 ก่อน mark task done:

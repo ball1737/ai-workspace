@@ -34,7 +34,7 @@ status: draft
 │                  happywork-backend                   │
 │                                                      │
 │  ┌─────────────────────────────────────────────┐    │
-│  │ /api/v2/admin/{features,packages,addons,    │    │
+│  │ /api/v2/{features,packages,addons,    │    │
 │  │   companies/:uuid/features}                 │    │
 │  │                                             │    │
 │  │  Controllers → Services → Repositories      │    │
@@ -85,13 +85,13 @@ status: draft
 | `compCompanyAddons` model | `compCompanyAddons.model.ts` | new | |
 | `compCompanies` model | `compCompanies.model.ts` | modify | FK relation update |
 | `feature` module | `src/modules/v2/admin/feature/` | new | CRUD master |
-| `feature` routes | `src/api/v2/admin/feature/` | new | |
+| `feature` routes | `src/api/v2/feature/` | new | |
 | `packageCrud` module | `src/modules/v2/admin/packageCrud/` | new | CRUD master (different from existing v2/admin/package which is Stripe sync) |
-| `packageCrud` routes | `src/api/v2/admin/packageCrud/` | new | |
+| `packageCrud` routes | `src/api/v2/packageCrud/` | new | |
 | `addon` module | `src/modules/v2/admin/addon/` | new | CRUD master |
-| `addon` routes | `src/api/v2/admin/addon/` | new | |
+| `addon` routes | `src/api/v2/addon/` | new | |
 | `companyFeature` module | `src/modules/v2/admin/companyFeature/` | new | Per-company override |
-| `companyFeature` routes | `src/api/v2/admin/companyFeature/` | new | |
+| `companyFeature` routes | `src/api/v2/companyFeature/` | new | |
 | `permissionResolver` module | `src/modules/v2/admin/permissionResolver/` | new | Shared resolver (used by Phase 4 callers) |
 | `requireSuperAdmin` middleware | `src/middlewares/requireSuperAdmin.middleware.ts` | new (if not exists) | RBAC for super_admin only |
 | `compPermission.ts` constant | `src/constant/compPermission.ts` | modify | Add `getAvailableMenuKeys()` helper |
@@ -313,7 +313,7 @@ export interface CompanyFeatureItem {
 
 ### 4.1 Feature CRUD
 
-#### `GET /api/v2/admin/features`
+#### `GET /api/v2/sale-dashboard/features`
 - Description: List features with usage info
 - Auth required: yes (super_admin only)
 - Query: `?search=&sortBy=&sortOrder=&page=&limit=&statusType=`
@@ -330,10 +330,10 @@ export interface CompanyFeatureItem {
   ```
 - Errors: 401 unauthorized, 403 forbidden (not super_admin)
 
-#### `GET /api/v2/admin/features/:featureUuid`
+#### `GET /api/v2/sale-dashboard/features/:featureUuid`
 - Response: Feature + usage details
 
-#### `POST /api/v2/admin/features`
+#### `POST /api/v2/sale-dashboard/features`
 - Auth: super_admin
 - Request body:
   ```json
@@ -348,15 +348,15 @@ export interface CompanyFeatureItem {
 - Response (201): Feature
 - Errors: 400 (invalid code/menu_keys, duplicate code), 401, 403
 
-#### `PUT /api/v2/admin/features/:featureUuid`
+#### `PUT /api/v2/sale-dashboard/features/:featureUuid`
 - Body: partial Feature
 - Response (200): Feature
 
-#### `DELETE /api/v2/admin/features/:featureUuid`
+#### `DELETE /api/v2/sale-dashboard/features/:featureUuid`
 - Soft-delete (set status_type='archived')
 - Errors: 400 (still in use by packages/addons)
 
-#### `GET /api/v2/admin/features/menu-keys/available`
+#### `GET /api/v2/sale-dashboard/features/menu-keys/available`
 - Response: list of leaf paths from PermissionDefault
   ```json
   { "code": 0, "data": { "menuKeys": ["dashboard", "payroll.payrollSetting", "timeAttendance.attendance", ...] } }
@@ -366,28 +366,29 @@ export interface CompanyFeatureItem {
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/v2/admin/packages` | List packages |
-| GET | `/api/v2/admin/packages/:packageUuid` | Get + features list |
-| POST | `/api/v2/admin/packages` | Create |
-| PUT | `/api/v2/admin/packages/:packageUuid` | Update metadata |
-| DELETE | `/api/v2/admin/packages/:packageUuid` | Soft-delete |
-| PUT | `/api/v2/admin/packages/:packageUuid/features` | Replace feature list — body: `{featureUuids: string[]}` |
-| GET | `/api/v2/admin/packages/:packageUuid/effective-menus` | Preview unlocked menus |
+| GET | `/api/v2/sale-dashboard/packages` | List packages |
+| GET | `/api/v2/sale-dashboard/packages/:packageUuid` | Get + features list |
+| POST | `/api/v2/sale-dashboard/packages` | Create |
+| PUT | `/api/v2/sale-dashboard/packages/:packageUuid` | Update metadata |
+| DELETE | `/api/v2/sale-dashboard/packages/:packageUuid` | Soft-delete |
+| PUT | `/api/v2/sale-dashboard/packages/:packageUuid/features` | Replace feature list — body: `{featureUuids: string[]}` |
+| GET | `/api/v2/sale-dashboard/packages/:packageUuid/effective-menus` | Preview unlocked menus |
+| PATCH | `/api/v2/sale-dashboard/packages/:packageUuid/identifier` | **(Added 2026-05-05)** Update package uuid เพื่อ sync กับ Stripe product ID — body: `{newUuid: string (uuid v4)}` — validate unique + ≠ current; FK ที่ pointing ไป `comp_packages.id` ไม่ได้รับผลกระทบ |
 
 ### 4.3 Addon CRUD
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/v2/admin/addons` | List |
-| GET | `/api/v2/admin/addons/:addonUuid` | Get |
-| POST | `/api/v2/admin/addons` | Create (validate is_quantifiable→max_quantity) |
-| PUT | `/api/v2/admin/addons/:addonUuid` | Update |
-| DELETE | `/api/v2/admin/addons/:addonUuid` | Soft-delete |
-| PUT | `/api/v2/admin/addons/:addonUuid/features` | Replace features |
+| GET | `/api/v2/sale-dashboard/addons` | List |
+| GET | `/api/v2/sale-dashboard/addons/:addonUuid` | Get |
+| POST | `/api/v2/sale-dashboard/addons` | Create (validate is_quantifiable→max_quantity) |
+| PUT | `/api/v2/sale-dashboard/addons/:addonUuid` | Update |
+| DELETE | `/api/v2/sale-dashboard/addons/:addonUuid` | Soft-delete |
+| PUT | `/api/v2/sale-dashboard/addons/:addonUuid/features` | Replace features |
 
 ### 4.4 Company Feature Toggle
 
-#### `GET /api/v2/admin/companies/:companyUuid/features`
+#### `GET /api/v2/companies/:companyUuid/features`
 - Response: list ของ feature ทั้งหมด พร้อม `enabled` + `source`
   ```json
   {
@@ -402,7 +403,7 @@ export interface CompanyFeatureItem {
   }
   ```
 
-#### `PUT /api/v2/admin/companies/:companyUuid/features/:featureUuid`
+#### `PUT /api/v2/companies/:companyUuid/features/:featureUuid`
 - Body:
   ```json
   { "enabled": true, "reason": "Trial extension by sales" }
@@ -410,7 +411,7 @@ export interface CompanyFeatureItem {
 - Action: upsert row ใน `comp_company_features` (override_status = enabled/disabled)
 - Response (200): updated CompanyFeatureItem
 
-#### `DELETE /api/v2/admin/companies/:companyUuid/features/:featureUuid`
+#### `DELETE /api/v2/companies/:companyUuid/features/:featureUuid`
 - Action: hard delete row ใน `comp_company_features` → กลับไป default จาก package/addon
 - Response (200): updated CompanyFeatureItem
 
@@ -473,7 +474,7 @@ export interface CompanyFeatureItem {
       ↓
 [Super Admin] Submit
       ↓
-[CMS] Saga dispatches sdCreateFeatureRequest → service.create() → POST /api/v2/admin/features
+[CMS] Saga dispatches sdCreateFeatureRequest → service.create() → POST /api/v2/sale-dashboard/features
       ↓
 [Backend] requireSuperAdmin middleware → validateRequest (Zod) → controller → service
       ↓
@@ -532,7 +533,7 @@ export interface CompanyFeatureItem {
       ↓
 [Super Admin] Enter optional reason → Confirm
       ↓
-[CMS] Saga: PUT /api/v2/admin/companies/:companyUuid/features/:featureUuid
+[CMS] Saga: PUT /api/v2/companies/:companyUuid/features/:featureUuid
       ↓
 [Backend] companyFeature.service.setCompanyFeatureOverrideService:
   - validate company exists, feature exists
@@ -624,6 +625,9 @@ export interface CompanyFeatureItem {
 | Q3 | Addon expired (`expires_at < NOW()`) → auto-disable? | **A — Auto-disable** | Resolver §6.2 ต้อง filter `expires_at IS NULL OR expires_at > NOW()` ตอน load `comp_company_addons` |
 | Q4 | Soft-delete feature → override row จัดการยังไง | **B — FK no-CASCADE + Resolver skip archived** | M6 FK `feature_id` = `RESTRICT` (ไม่ใช่ CASCADE); Resolver filter `feature.status_type='active'` |
 | Q5 | `comp_companies.add_ons` jsonb format | **Resolved by code review** | format `Array<{uuid, quantity}>` — M7 SQL พร้อมใช้ |
+| Q6 | RBAC resource name สำหรับ Master Data Package Management (collision กับ `packages` ที่มีอยู่แล้ว) | **A — ใช้ resource name ใหม่ `master_packages`** (resolved 2026-05-05) | `frontend.md §4` ปรับ example + components ของ Page B ใช้ key `"master_packages"`; existing `packages` ใน `rbac.ts` คงเดิม (ไม่ break `package-config-feature` view) |
+| Q7 | Slice file naming collision: legacy `sale-dashboard-feature-management` ถูกใช้โดย 4 production views อยู่ก่อนแล้ว ทำให้ F3 Master Data slices ไปชนชื่อ | **B (rename-only) — Rename legacy slice → `sale-dashboard-package-config-feature` (ตาม section folder); F3 Master Data ใช้ชื่อ `sale-dashboard-{feature,package,addon}-management` ตาม spec เดิม; pure rename ห้าม refactor logic** (resolved 2026-05-05) | F3 hooks/reducer slots/saga watchers/types ของ Master Data ใช้ชื่อตาม spec; legacy slice + 4 importer views update ใช้ namespace `SaleDashboardPackageConfigFeature` แทน |
+| Q8 | Frontend `AddonBillingInterval` ใน F3 slice draft ใช้ `'monthly'\|'yearly'\|'one_time'` ไม่ตรงกับ backend B3 Zod `z.enum(['month','year']).nullable()` → addon CRUD จะ fail at runtime | **Rename frontend value: `monthly→month`, `yearly→year`, drop `one_time` (semantic ย้ายไป null)** (resolved 2026-05-05) | Form select 3 options: One-time (value=`""` → wire `null`), Monthly (`"month"`), Yearly (`"year"`); mappers convert null↔""; i18n keys `addonManagement.billing.{month,year,one_time}` (one_time = null display label); Package side ถูกต้องอยู่แล้ว (F5 fix) |
 
 ### Backward compat
 - `comp_permission`/`comp_permission_mapping` JSONB structure ไม่เปลี่ยน

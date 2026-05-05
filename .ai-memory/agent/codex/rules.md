@@ -14,7 +14,7 @@
 6. `.ai-memory/summary.md` — project summary
 7. `.ai-memory/task-list.md` — project task list
 
-ถ้า Codex จะทำงานในบทบาทเฉพาะ เช่น Lead, Backend, Frontend, QA, DevOps, Code Reviewer, BA หรือ SA ต้องอ่านไฟล์ของ role นั้นเพิ่ม:
+ถ้า Codex จะทำงานในบทบาทเฉพาะ เช่น Lead, **Developer** (full-stack: backend + frontend ใน agent เดียว), QA, DevOps, Code Reviewer, BA หรือ SA ต้องอ่านไฟล์ของ role นั้นเพิ่ม:
 
 1. `.ai-memory/agent/{role}/rules.md`
 2. `.ai-memory/agent/{role}/skills.md`
@@ -68,7 +68,7 @@ Codex ต้อง sync memory ตามระดับของงาน:
 
 ## Constraints
 
-- ห้ามแทนที่ workflow หลักของ 8 specialist agents เดิม
+- ห้ามแทนที่ workflow หลักของ 7 specialist agents เดิม (lead, sa, ba, **developer**, qa, code-reviewer, devops) — backend + frontend ถูก merged เป็น `developer` ตั้งแต่ 2026-05-05
 - ห้ามแตะไฟล์นอก scope ที่ผู้ใช้สั่ง โดยเฉพาะ folder ที่ผู้ใช้ exclude
 - ห้ามแก้ code โดยไม่อ่านไฟล์ก่อน
 - ห้ามตัดสิน short/long เองถ้ากำกวม

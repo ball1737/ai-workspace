@@ -35,21 +35,28 @@ _(ยังไม่มี feature ที่ทำเสร็จ)_
 - **Documents:** `_docs/requirement/` (PRD/SSD/test cases ของแต่ละ feature)
 - **Subagents:** `.claude/agents/` (Claude Code subagent definitions)
 
-8 agents:
+7 specialist agents (+ Codex adaptive runner):
 
 - **Coordinators:** Lead
 - **Analysts:** SA, BA
-- **Implementers:** Backend, Frontend
+- **Implementers:** Developer (full-stack — backend + frontend tracks ใน agent เดียว, merged ตั้งแต่ 2026-05-05)
 - **Quality:** QA, DevOps, Code Reviewer
+- **Adaptive:** Codex (intake + เลือก specialist role ที่เหมาะสม)
+
+**Default dispatch mode:** in-session role switching (Lead "สวมหมวก" specialist ใน session เดียว) — ไม่ใช้ Agent tool dispatch sub-agent ยกเว้น exception case (ดู master rules §14)
 
 ---
 
 ## Key Decisions / History
 
-| Date       | Decision                                                         | Reason                                                     |
-| ---------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
-| 2026-04-29 | Type safety cleanup scope is `mof-backend/src` only              | Tests/scripts remain out of scope for first pass           |
-| 2026-04-29 | One exported `ModelObject<Model>` type per Objection model class | User clarified no Insert/Update/Patch/Delete model aliases |
+| Date       | Decision                                                                                              | Reason                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 2026-04-29 | Type safety cleanup scope is `mof-backend/src` only                                                   | Tests/scripts remain out of scope for first pass                                      |
+| 2026-04-29 | One exported `ModelObject<Model>` type per Objection model class                                      | User clarified no Insert/Update/Patch/Delete model aliases                            |
+| 2026-05-05 | Merge backend + frontend agents → `developer` (full-stack)                                            | ผู้ใช้รายงาน context ไม่ต่อเนื่องเมื่อแยก agent — รวมแล้วสลับ track ใน session เดียว |
+| 2026-05-05 | Default dispatch mode = in-session role switching (master §14)                                        | ลด overhead + token waste จาก sub-agent fresh context                                 |
+| 2026-05-05 | Files Read Memory rule (master §15)                                                                   | ลด re-read ซ้ำซ้อนภายใน session เดียวกัน                                              |
+| 2026-05-05 | Reporting Format trigger-based (master §16)                                                           | format เต็มเฉพาะ trigger (close phase / user ขอ / handoff) ไม่ใช่ทุก task             |
 
 ---
 

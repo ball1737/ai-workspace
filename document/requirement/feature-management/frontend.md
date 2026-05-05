@@ -275,6 +275,11 @@ src/
 
 ## 3. Redux Store
 
+> **Q7 Resolution (2026-05-05):** ชื่อไฟล์ + reducer slot + hook + saga watcher ของ Master Data slices ใช้ตาม spec ด้านล่าง (`sale-dashboard-{feature,package,addon}-management`, `useSaleDashboard{Feature,Package,Addon}Management`) — legacy slice เดิมที่ใช้ชื่อนี้ถูก rename เป็น `sale-dashboard-package-config-feature` ใน Wave Q7 (pure rename, no logic change). 4 importer views ของ legacy (`package-config-feature-view`, `edit-package-dialog`, `lead-information-tab`, `customer-information-tab`) update slot key + namespace ref แล้ว
+>
+> **Q8 Resolution (2026-05-05):** `AddonBillingInterval` + `PackageBillingInterval` ใช้ค่า `'month' | 'year'` (string literal union, nullable) — match backend B3 Zod `z.enum(['month','year']).nullable()`. `null` = one-time billing. Form select 3 options: One-time (form value `""` → wire `null`), Monthly (`"month"`), Yearly (`"year"`). i18n key `addonManagement.billing.one_time` คงไว้เป็น display label ของ null (semantic preservation)
+
+
 โครงสร้างคล้าย `sale-dashboard-admin-users.ts` ที่มีอยู่แล้ว
 
 ### 3.1 Actions (`actions/sale-dashboard-feature-management.ts`)
@@ -372,34 +377,38 @@ export const useSaleDashboardFeatureManagement = () => {
 
 ### `src/utils/rbac.ts`
 
+> **Decision Q6 (2026-05-05):** Resource สำหรับ Master Data Package Management ใช้ชื่อ `master_packages` (ไม่ใช่ `packages`) เพราะ `packages` มีอยู่แล้วใน `rbac.ts` (pre-existing) ถูกใช้โดย `src/sections/package-config-feature/package-config-feature-view.tsx` — ห้ามแตะ existing `packages` เพื่อกัน break UI ที่ admin/manager/viewer ใช้อยู่
+
 เพิ่ม resources และ permissions:
 
 ```typescript
 export type Resource =
-  | "admin_users" | "customers" | "leads" | /* existing */
-  | "features"           // new
-  | "packages"           // new
-  | "addons"             // new
-  | "company_features";  // new
+  | "admin_users" | "customers" | "leads" | /* existing — รวม `packages` ที่มีอยู่แล้ว */
+  | "features"           // new (Phase 2)
+  | "master_packages"    // new (Phase 2) — Master Data Package Management
+  | "addons"             // new (Phase 2)
+  | "company_features";  // new (Phase 2)
 
 export const PERMISSIONS: Record<Role, Record<Resource, PermissionAction[]>> = {
   super_admin: {
-    // ... existing
+    // ... existing (รวม `packages` เดิม)
     features: ["view", "create", "edit", "delete", "manage"],
-    packages: ["view", "create", "edit", "delete", "manage"],
+    master_packages: ["view", "create", "edit", "delete", "manage"],
     addons: ["view", "create", "edit", "delete", "manage"],
     company_features: ["view", "edit", "manage"],
   },
   admin: {
-    // ไม่ให้สิทธิ์ — feature management เฉพาะ super_admin
+    // ไม่ให้สิทธิ์ — Master Data เฉพาะ super_admin
     features: [],
-    packages: [],
+    master_packages: [],
     addons: [],
     company_features: [],
   },
-  // ... manager, viewer ก็ไม่ให้สิทธิ์
+  // ... manager, viewer ก็ไม่ให้สิทธิ์ (`[]` ทั้ง 4 resources)
 };
 ```
+
+> **Implementation note:** Wave F1 (2026-05-05) เพิ่ม `features`, `addons`, `company_features` ครบแล้ว แต่ **ยังไม่ได้เพิ่ม `master_packages`** เพราะยังไม่ได้ตัดสิน Q6 — Wave ที่จะ implement Page B (Package Management UI) ต้องเพิ่ม `master_packages` resource เข้า `rbac.ts` ก่อน + ใน components ที่เรียกใช้ใช้ key `"master_packages"` (ไม่ใช่ `"packages"`)
 
 ---
 

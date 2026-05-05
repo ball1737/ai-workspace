@@ -125,9 +125,9 @@
      ↓
 [BA]   validate ว่า design ตรง requirement
      ↓ (ถ้าไม่ตรง → กลับไป SA)
-[Lead] แตก task ใน task-list.md → assign agent (backend / frontend / devops)
+[Lead] แตก task ใน task-list.md → assign agent (developer / devops)
      ↓
-[Backend / Frontend / DevOps] ทำงานตาม task ของตัวเอง อัพเดต current-task.md
+[Developer / DevOps] ทำงานตาม task ของตัวเอง อัพเดต current-task.md
      ↓
 [Code Reviewer] review code ที่เขียนเสร็จ
      ↓ (ถ้ามี issue → กลับไป dev)
@@ -159,8 +159,9 @@
 > Lead เป็นคนระบุ **format ที่ต้องการให้ agent รายงานกลับ** เช่น "ขอให้รายงาน files changed, test result, anything blocked" — agent ทำงานเสร็จแล้ว fill in ส่ง back เป็น final message ของ subagent run
 
 ```markdown
-1. **Agent role:** {backend | frontend | qa | code-reviewer | devops}
+1. **Agent role:** {developer | qa | code-reviewer | devops}
    ← Lead ระบุ role ของ agent ที่จะรับงาน
+   ← **หมายเหตุ:** Backend + Frontend ถูกรวมเป็น `developer` ตั้งแต่ 2026-05-05 — task spec ระบุ Active Track (backend / frontend / both) ใน details
 
 2. **หัวข้อ (Topic):**
    {ชื่อสั้นๆ ของงาน — 1 บรรทัด เช่น "P1.9 Run migrations + verify on dev DB"}
@@ -222,15 +223,47 @@
 
 | Part    | Agents ที่อยู่ใน part     | ใช้เมื่อ                                                      |
 | ------- | ------------------------- | ------------------------------------------------------------- |
-| **dev** | backend, frontend         | งานสร้าง / แก้ code (production code + unit test)             |
+| **dev** | developer                 | งานสร้าง / แก้ code (backend + frontend + unit test)         |
 | **qa**  | qa, code-reviewer, devops | งาน verify (integration test, code review, infra, deployment) |
 
 **ลำดับปกติ: dev → qa**
 
-- dev: ออกแบบ + implement + unit test
+- dev: ออกแบบ + implement + unit test (Developer ทำทั้ง backend + frontend ใน session เดียว — ดู `agent/developer/rules.md §Track Selection`)
 - qa: review code + run tests + deploy / verify infra
 
-**Lead อาจ run dev agents หลายตัวขนานกัน** (เช่น backend + frontend ในงานที่ scope ต่างกัน) แต่ qa ทำหลัง dev เสร็จ checkpoint นั้นๆ
+**Lead จัดลำดับ track ภายใน dev part:** ถ้า task เป็น `both` → backend track ก่อน → frontend track ทีหลัง (sequential ใน session เดียว). qa ทำหลัง dev เสร็จ checkpoint นั้นๆ.
+
+### 3.5.4.5 Dispatch Mode (Default = In-session Role Switching)
+
+> **Default mode ใหม่ (ตั้งแต่ 2026-05-05):** Lead/Claude ทำงานทุก specialist role ใน **session เดียวกัน** โดยการ "สวมหมวก" — อ่าน rules ของ role นั้น แล้วทำงานในบทบาทนั้น **ห้ามใช้ Agent tool dispatch sub-agent เป็น default** ดู §14 สำหรับ protocol เต็ม
+
+**ทำไม default = in-session role switching (เปลี่ยนจากเดิม sub-agent inline):**
+
+- Sub-agent dispatch ทำให้ context ขาด — agent ใหม่ต้อง re-load doc + re-read files ทุกครั้ง → token waste
+- Backend/Frontend แยก agent ทำให้งานไม่ต่อเนื่อง — backend ทำอะไรไป frontend รู้ไม่หมด (ตอนนี้ merged เป็น `developer` แล้ว)
+- In-session switch ใช้ context เดียวกันทั้ง session → backend → frontend ทำต่อเนื่องเห็น API contract กับ UI integration ในที่เดียว
+- รักษาประโยชน์เดิม: ผู้ใช้เห็น flow ใน session เดียว + Lead วางแผน step ต่อไปได้ทันที
+
+**Mode summary:**
+
+| Mode | Trigger | Tool |
+|------|---------|------|
+| **In-session role switch** (default) | Default ทุกงาน | ห้ามใช้ Agent tool — Claude สวมหมวก specialist + ทำเอง |
+| **Sub-agent inline** (fallback) | งานต้อง isolate context (เช่น load test, large refactor) + ผู้ใช้อนุญาต | Agent tool |
+| **Prompt-only** | ผู้ใช้สั่งชัดเจน ("เอา prompt ออก", "session แยก") | แสดง prompt text เท่านั้น — ห้าม call Agent tool |
+
+**Trigger ที่ทำให้ Lead เปลี่ยนเป็น prompt-only mode:**
+
+- ผู้ใช้พิมพ์ "เอา prompt ออกมา", "ตอบเป็น prompt", "ฉันจะ dispatch แยก", "session แยก", "ให้ฉัน copy ไปสั่ง" หรือ phrase ใกล้เคียง — Lead ต้องเปลี่ยน mode เฉพาะรอบนั้น
+- หลัง Lead ส่ง prompt เป็น text แล้ว → รอผู้ใช้นำ outbox/summary กลับมาให้ Lead วาง step ต่อไป
+- **กลับเป็น default (in-session role switch) ทันที** เมื่อผู้ใช้บอกให้ dispatch ต่อ / ทำต่อ — ห้ามจดจำ prompt-only เป็น default ของ session
+
+**Anti-patterns สำหรับ dispatch mode:**
+
+- ❌ Lead ใช้ Agent tool dispatch developer/qa/code-reviewer/devops เป็น default — ต้องใช้ in-session switch (ดู §14)
+- ❌ Lead เลือก prompt-only mode เองโดยที่ผู้ใช้ไม่ได้สั่ง — ผู้ใช้คาดหวัง in-session switch
+- ❌ Lead จดจำ prompt-only เป็น default ตลอด session หลังผู้ใช้สั่งครั้งเดียว — ต้องกลับ default ทันทีรอบถัดไป
+- ❌ Lead ผสม mode ในรอบเดียว — ต้อง consistent ทั้งรอบ ยกเว้นผู้ใช้ระบุชัด
 
 ### 3.5.5 Anti-patterns (ห้ามทำ)
 
@@ -243,7 +276,8 @@
 ### 3.5.6 ตัวอย่าง prompt ที่ถูกต้อง
 
 ```markdown
-**Agent role:** backend
+**Agent role:** developer
+**Active Track:** backend
 
 **หัวข้อ:**
 P2.3-P2.9 — Implement v2/admin/feature CRUD module + register routes
@@ -292,7 +326,7 @@ Codex เป็น **Adaptive Lead / Runner** ที่ใช้ `.ai-memory/age
 
 - เริ่มจาก intake แบบ Lead เพื่อจำแนกงานสั้น/ยาว
 - ถ้าจะลงมือในบทบาทเฉพาะ ต้องอ่าน rules / skills / current-task ของ specialist role นั้นก่อน
-- ไม่แทนที่ workflow หลักของ 8 specialist agents เดิม
+- ไม่แทนที่ workflow หลักของ 7 specialist agents เดิม (lead, sa, ba, **developer**, qa, code-reviewer, devops) — backend + frontend ถูกรวมเป็น `developer` ตั้งแต่ 2026-05-05
 - เคารพ `.codexignore` เป็น mirror ของ `.claudeignore` ระหว่างค้นหาและอ่านไฟล์
 
 ---
@@ -632,8 +666,7 @@ docs/analysis/menu/
 | **Lead**          | Sonnet 4.6             | ❌ (orchestrate)  | ตัดสินใจ + dispatch — ต้องการความเร็ว + เหตุผลปานกลาง   |
 | **SA**            | Opus 4.7               | ❌ (analyze)      | อ่าน code base ลึก + ออกแบบ — quality สำคัญกว่าความเร็ว |
 | **BA**            | Sonnet 4.6             | ❌ (validate)     | Validation/comparison แบบมีโครงสร้างชัด                 |
-| **Backend**       | **Opus 4.7**           | ✅ Coding         | เขียน production code                                   |
-| **Frontend**      | **Opus 4.7**           | ✅ Coding         | เขียน production code                                   |
+| **Developer**     | **Opus 4.7**           | ✅ Coding         | เขียน production code (backend + frontend tracks ใน agent เดียว) — รวมจาก backend + frontend agents เดิมตั้งแต่ 2026-05-05 |
 | **QA**            | **Opus 4.7**           | ✅ Coding (test)  | เขียน test code (unit / integration / E2E)              |
 | **DevOps**        | **Opus 4.7**           | ✅ Coding (infra) | เขียน Dockerfile / k8s / CI / deploy script             |
 | **Code Reviewer** | Sonnet 4.6             | ❌ (read-only)    | อ่าน + flag เท่านั้น ไม่เขียน code — Sonnet เพียงพอ     |
@@ -645,7 +678,7 @@ docs/analysis/menu/
 
 **Escalate ขึ้น Opus** (จาก Sonnet) เมื่อ:
 
-- **Lead** เจอ feature ใหญ่ที่ต้อง decomposition ซับซ้อน หรือ architecture-level decision
+- **Lead** เจอ feature ใหญ่ที่ต้อง decomposition ซับซ้อน หรือ architecture-level decision (รวมถึงตอน Lead switch role เป็น Developer ด้วย — coding ต้อง Opus เสมอ)
 - **BA** ต้อง validate การตัดสินใจระดับ architecture
 - **Code Reviewer** เจอ security review / architecture concern / N+1 ที่ซับซ้อน
 
@@ -693,6 +726,12 @@ docs/analysis/menu/
 - Append heartbeat ทุก checkpoint สำหรับ session > 10 นาที (§13.6)
 - ใช้ `.ai-memory/activity.log.md` เป็น source of truth ของ history (§13.4)
 - Handoff file เขียนเฉพาะ delta — ไม่ลอก snapshot ทั้งก้อน (§13.8 + §13.9)
+- **In-session role switching เป็น default** — Lead "สวมหมวก" Developer/QA/etc. ใน session เดียว ไม่เรียก Agent tool (§14)
+- **Log `▶️ Switching role:` ทุกครั้งที่เปลี่ยน role** — ผู้ใช้ต้องเห็นภาพชัด (§14.6)
+- **เช็ค Files Read Memory ก่อนเรียก Read tool** — ถ้าไฟล์อ่านแล้ว + valid → ใช้ memory (§15)
+- **Append entry ใน Files Read Memory ทุกครั้งหลัง Read/Edit** (§15.3)
+- **ใช้ Reporting Format เต็มเฉพาะ trigger** — ปิด phase / user ขอ / handoff (§16.1)
+- **Default reporting = สั้น 1-3 บรรทัด** — ไม่ต้อง format เต็มทุก task (§16.2)
 
 ### Don'ts ❌
 
@@ -721,6 +760,11 @@ docs/analysis/menu/
 - ห้ามใช้ TaskCreate กับงานสั้น (<10 นาที) — overhead ไม่คุ้ม (§13.7)
 - ห้ามทำ handoff file เป็น snapshot เต็ม (ลอก current.md ทั้งก้อน) แทน delta (§13.8 + §13.9)
 - ห้าม Lead dispatch role ที่มี session active อยู่แล้วซ้ำ — รวมเข้า inbox เดียวหรือถามผู้ใช้ (§13.1)
+- **ห้ามใช้ Agent tool dispatch sub-agent เป็น default** — ใช้ in-session role switch เสมอ ยกเว้น exception §14.4
+- **ห้าม switch role โดยไม่ log `▶️ Switching role:`** — ผู้ใช้สับสนว่าใครทำงาน (§14.5)
+- **ห้าม re-read ไฟล์ที่อยู่ใน Files Read Memory + ยัง valid** — เปลือง token (§15.5)
+- **ห้ามใช้ memory ของ role อื่น** — แต่ละ role memory แยกกัน (§15.5)
+- **ห้ามใช้ Reporting Format เต็มทุก task** — ใช้เฉพาะ trigger (§16.4)
 
 ---
 
@@ -743,7 +787,7 @@ docs/analysis/menu/
 
 `{role}-{YYYYMMDD}-{HHMM}-{short-token}` เช่น `lead-20260505-1430-a3f`
 
-- `role` ∈ `{lead, sa, ba, backend, frontend, qa, code-reviewer, devops, codex}`
+- `role` ∈ `{lead, sa, ba, developer, qa, code-reviewer, devops, codex}` (backend + frontend merged เป็น `developer` ตั้งแต่ 2026-05-05)
 - `short-token` = 3-char random hex
 
 **Lifecycle:**
@@ -978,3 +1022,185 @@ purpose: {1-line reason}
 - ❌ Spawn worker โดย Lead ไม่ check `active-sessions.md` ก่อน → มี worker เดิมทำอยู่แล้ว
 - ❌ Handoff file ทำเป็น snapshot เต็ม (ลอก current.md ทั้งก้อน) แทน delta
 - ❌ ทิ้งบรรทัด session ตัวเองค้างใน `active-sessions.md` หลังปิด session
+
+---
+
+## 14. ⚠️ กฏ CRITICAL — In-session Role Switching Protocol (Default Dispatch Mode ใหม่)
+
+> **ตั้งแต่ 2026-05-05:** Default mode ของ Lead dispatch = **in-session role switching** — Lead/Claude ทำงานทุก specialist role ใน **session เดียวกัน** โดยการ "สวมหมวก" (อ่าน rules ของ role นั้น แล้วทำงานในบทบาทนั้น)
+>
+> **ห้ามใช้ Agent tool dispatch sub-agent เป็น default** — ใช้ได้เฉพาะ exception case (§14.4)
+
+### 14.1 เหตุผล (ทำไมเปลี่ยนจาก sub-agent inline)
+
+- Sub-agent dispatch ทำให้ context ขาด — agent ใหม่ต้อง re-load doc + re-read files ทุกครั้ง → token waste มาก
+- ผู้ใช้รายงานว่าการ dispatch backend + frontend แยก agent ทำให้ context ไม่ต่อเนื่อง — backend ทำอะไรไป frontend รู้ไม่หมด → ปัญหานี้แก้ที่ 2 ระดับ:
+  1. รวม backend + frontend → `developer` agent ตัวเดียว (ดู §11.2 + `agent/developer/`)
+  2. เปลี่ยน default dispatch จาก sub-agent inline → in-session role switching (§14 นี้)
+- In-session switch ใช้ context เดียวกันทั้ง session → backend → frontend ทำต่อเนื่อง เห็น API contract กับ UI integration ในที่เดียว
+- Lead วางแผน step ต่อไปได้ทันทีโดยไม่มี context loss
+
+### 14.2 Workflow ของ Role Switching
+
+1. **เริ่ม role switch** — Claude บันทึกบรรทัดให้ผู้ใช้เห็น:
+   ```
+   ▶️ Switching role: Lead → Developer (backend track)
+      Task: {1-line task summary}
+   ```
+2. **Bootstrap role** — อ่าน `.ai-memory/agent/{role}/rules.md` + `skills.md` + `current-task.md` ก่อนทำงาน (ถ้ายังไม่อ่านใน session — ดู §15 Files Read Memory)
+3. **ทำงานในบทบาท** — ปฏิบัติตามกฏของ role นั้นเต็มรูปแบบ (โดยเฉพาะ Coding Standards + Constraints + File Reading Strategy)
+4. **อัพเดต current-task** — update `current-task.md` ของ role นั้นทันทีเมื่อทำเสร็จแต่ละ checkpoint (ตาม master §4.6)
+5. **จบ role งาน** — บันทึกบรรทัดให้ผู้ใช้เห็น:
+   ```
+   ✅ {Role} done: {1-line summary}
+   ```
+   แล้ว switch กลับ Lead เพื่อ plan step ต่อไป
+6. **ถ้าจะ switch ไป role ใหม่** — repeat step 1
+
+### 14.3 ความสัมพันธ์กับ §3.5 (Lead Prompt Composition)
+
+§3.5 กำหนดว่า Lead ต้องออกแบบ **4-section prompt** ก่อน dispatch ทุกครั้ง — ใน in-session role switching mode กฏนี้ยังคงใช้:
+
+- Lead ออกแบบ 4-section prompt (เพื่อให้ผู้ใช้เห็นภาพ + Lead เองตั้ง scope ชัดก่อนทำ)
+- Lead log Dispatch Plan + Activation log (per §6 ใน lead/rules.md)
+- **ต่างกับเดิม:** แทนที่จะเรียก Agent tool → Claude **สวมหมวก specialist + ทำเอง** ใน session เดียว
+- หลังเสร็จ — Lead "ถอดหมวก specialist" → กลับเป็น Lead → plan ต่อ
+
+### 14.4 ข้อยกเว้น (เมื่อใช้ Agent tool / sub-agent ได้)
+
+ใช้ Agent tool dispatch sub-agent ได้เฉพาะ:
+
+1. **ผู้ใช้สั่งชัดเจน** — "dispatch", "ใช้ subagent", "เอา prompt ออก" (case prompt-only mode)
+2. **งาน parallel จริง** — ต้องทำพร้อมกัน 2 อย่างที่ไม่ depend กัน + ผู้ใช้อนุญาต (เช่น run 2 long-running tests พร้อมกัน)
+3. **งานที่ต้อง isolate context** — load test, large refactor ที่กลัว context pollution, search ข้าม code base ขนาดใหญ่ที่จะลาก content เข้ามาเยอะ
+4. **Long-running task (>10 min)** — ใช้ TaskCreate (per §13.7) แทน Agent tool inline
+
+ทุก exception ต้อง log Activation + เหตุผลให้ผู้ใช้เห็นก่อนเรียก tool
+
+### 14.5 Anti-patterns
+
+- ❌ ใช้ Agent tool dispatch developer/qa/code-reviewer/devops เป็น default — ผู้ใช้ต้องสั่งชัดเจนเท่านั้น
+- ❌ Switch role โดยไม่ log บรรทัด `▶️` ให้ผู้ใช้เห็น — ผู้ใช้สับสนว่าใครกำลังทำงาน
+- ❌ Switch role โดยไม่อ่าน rules ของ role นั้น (อ้างว่า "อ่านแล้วใน session ก่อนๆ") — เริ่ม session ใหม่ ต้อง bootstrap (§15 invalidation rule)
+- ❌ Skip Dispatch Plan logging (§6.1 ของ lead) เมื่อ switch role — ผู้ใช้ต้องเห็นภาพรวมแม้จะเป็น in-session
+- ❌ ทำงาน specialist role โดย Lead ไม่ตั้ง scope ก่อน — drift scope ง่าย
+
+### 14.6 ตัวอย่าง Activation Log ใหม่
+
+**ก่อน (sub-agent inline mode เก่า):**
+```
+▶️ Backend กำลังทำ: implement POST /api/menu endpoint
+```
+
+**หลัง (in-session role switch mode ใหม่):**
+```
+▶️ Switching role: Lead → Developer (backend track)
+   Task: implement POST /api/menu endpoint
+```
+
+หลังเสร็จ:
+```
+✅ Developer done: feature.service.ts + feature.controller.ts (TS pass, prettier ok)
+   Switching back to Lead.
+```
+
+---
+
+## 15. ⚠️ กฏ CRITICAL — Files Read Memory (Reduce Re-reading)
+
+> **กฏใหม่ตั้งแต่ 2026-05-05:** ก่อนเรียก Read tool ทุกครั้ง ต้องเช็ค `current-task.md §Files Read Memory` ของ role ปัจจุบันก่อน — ถ้าไฟล์อ่านแล้วใน session + ยังไม่ถูก Edit → **ใช้ memory ห้าม re-read**
+
+### 15.1 เหตุผล
+
+- Sub-agent run แต่ละครั้งเริ่มจาก fresh context → re-read SSD/PRD/source files ซ้ำๆ → token waste สูง
+- ใน in-session role switching (§14) Claude มี context ต่อเนื่องอยู่แล้ว แต่กฏเดิม "อ่านก่อนแก้เสมอ" ทำให้ re-read โดยไม่จำเป็น
+- การ memorize **key takeaways** แทน raw content → ลด token 80-90% โดยที่ context ที่จำเป็นยังครบ
+
+### 15.2 Format ของ Memory
+
+อยู่ใน `.ai-memory/agent/{role}/current-task.md` section "Files Read Memory":
+
+| Path | Read on | Edited | Key takeaways |
+|------|---------|--------|---------------|
+| src/modules/v2/feature/feature.service.ts | 2026-05-05 14:30 | yes | exports `createFeature(data)`, `updateFeature(uuid, data)`, `softDelete(uuid)`. ใช้ status enum INACTIVE. มี requireSuperAdmin guard ใน controller layer |
+
+### 15.3 Lifecycle
+
+| Event | Action |
+|-------|--------|
+| Read tool called | append entry → "Read on" + key takeaways (1-3 sentences ขนาดสั้น) |
+| Edit/Write file | update "Edited: yes" + refresh takeaways ถ้าโครงสร้างเปลี่ยน |
+| Switch role | memory ของ role ปัจจุบันยังคงไว้, role ใหม่ = อ่าน Files Read Memory ของตัวเอง (each role มี memory แยก) |
+| Session end | memory ยังอยู่ในไฟล์ — แต่ next session ต้อง revalidate (อ่านใหม่ 1 ครั้ง) เพราะอาจมี external change |
+
+### 15.4 ข้อยกเว้น (กรณี memory ไม่ครอบคลุม + ต้อง re-read)
+
+- ไฟล์ใหญ่มาก + อ่าน partial ครั้งแรก + ต้องดู section อื่น → re-read ส่วนใหม่ ระบุ "Last detail check: line X-Y" ใน takeaways
+- ผ่าน Bash tool แก้ไฟล์โดยไม่ผ่าน Edit/Write (เช่น `sed`, `mv`, refactor script) → invalidate memory + re-read
+- External change suspected (user ระบุว่าแก้ไฟล์เอง, git pull, หรือเริ่ม session ใหม่) → invalidate + re-read
+
+### 15.5 Anti-patterns
+
+- ❌ Re-read ไฟล์ที่อยู่ใน memory + ยัง valid (ไม่ถูก Edit ใน session) — เปลือง token
+- ❌ ไม่ append entry หลัง Read — ครั้งหน้า re-read อีก
+- ❌ Memory entry ละเอียดเกินไป (ลอก code มาทั้งก้อน) — defeat purpose
+- ❌ ใช้ memory ของ role อื่น (เช่น Developer ใช้ memory ของ Lead) — แต่ละ role memory แยกกัน
+- ❌ ไม่ refresh takeaways หลัง Edit ที่เปลี่ยน export structure — ครั้งหน้าใช้ memory ผิด
+
+### 15.6 Cross-reference
+
+- ทำงานคู่กับ §9 (File Reading Strategy) — §9 บอกว่า "อ่านอะไรบ้าง", §15 บอกว่า "อ่านเสร็จแล้วเก็บยังไง"
+- ทำงานคู่กับ §14 (In-session Role Switch) — context ต่อเนื่อง = memory มีค่า; sub-agent dispatch = memory ของ session ก่อนใช้ไม่ได้
+
+---
+
+## 16. ⚠️ กฏ CRITICAL — Reporting Format Trigger (Conditional Verbose Reports)
+
+> **กฏใหม่ตั้งแต่ 2026-05-05:** Standard Reporting Format เต็มรูปแบบ (Files / TS / Prettier / Tests / Checklist / Blocked / %) เป็น **format เต็ม verbose** — ใช้เฉพาะตอน trigger เท่านั้น
+
+### 16.1 Triggers (ใช้ format เต็ม)
+
+ใช้ format เต็มเฉพาะ:
+
+1. **ปิด phase / feature ใหญ่** — เช่น Phase 2 ของ feature-management complete, ก่อน Lead ปิดงาน
+2. **ผู้ใช้ขอชัดเจน** — keyword/phrase: "สรุปงาน", "รายงาน", "summary please", "ส่งงาน", "report", "show me what changed"
+3. **สร้าง handoff file** — context ใกล้เต็ม (ดู §7.3) ต้อง snapshot delta สำหรับ session ใหม่
+
+ในกรณี trigger — ใช้ format เต็มของ role ที่ทำงาน (ดู `agent/{role}/rules.md §Reporting Format`)
+
+### 16.2 Default (ไม่มี trigger)
+
+ตอบสั้น 1-3 บรรทัด — ระบุ:
+- Files ที่แก้ (path สั้นๆ)
+- ผลลัพธ์ (compile/test pass หรือ blocker)
+
+ตัวอย่าง:
+```
+✅ Done: feature.service.ts + feature.controller.ts (TS pass, prettier ok)
+```
+
+ถ้ามี blocker:
+```
+⚠️ Blocked: feature.service.ts — SSD §4.2 ไม่ได้ระบุว่า status enum รวม "pending" หรือไม่
+```
+
+### 16.3 ทำไมต้องเปลี่ยน
+
+- format เต็มมี 9 sections — ใช้ทุก task ใน phase เดียวกันทำให้ verbose โดยไม่ได้ value
+- Within-session work ผู้ใช้เห็น context ต่อเนื่องอยู่แล้ว — ไม่ต้องสรุปทุกครั้ง
+- format เต็มมีค่าเฉพาะตอน:
+  - ผู้ใช้จะนำไป commit message / PR description
+  - ปิดงาน + เปลี่ยน focus
+  - context จะหายไป (handoff)
+
+### 16.4 ข้อห้าม
+
+- ❌ ใช้ format เต็มทุก task ใน phase — verbose, ไม่ trigger
+- ❌ Skip format เต็มตอน user สั่ง "สรุปงาน" — user ต้องการ explicit summary
+- ❌ Skip format เต็มตอนปิด phase — ต้องมี audit trail สำหรับ commit message + handoff
+- ❌ ใช้ format เต็มตอนทำงาน middle-of-task — รอจน checkpoint จริง
+
+### 16.5 Cross-reference
+
+- §3.5.2 section 4 (Summary requirement) ใน Lead prompt — Lead ระบุ format ที่ต้องการ; ถ้า Lead ไม่ระบุ → ใช้ default (short) ตาม §16.2
+- `.ai-memory/agent/{role}/rules.md §Reporting Format` — กำหนด format เต็มของแต่ละ role

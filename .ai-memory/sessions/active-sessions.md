@@ -10,7 +10,7 @@
 
 | session-id | role | started | last-heartbeat | task | working-files | status |
 | ---------- | ---- | ------- | -------------- | ---- | ------------- | ------ |
-| _(empty)_  | —    | —       | —              | —    | —             | —      |
+| lead-20260505-1319-a1b | lead | 2026-05-05 13:19 | 13:19 | feature-management Phase 2 orchestration | .ai-memory/* (state files) | active |
 
 ---
 
@@ -25,11 +25,11 @@
 
 `{role}-{YYYYMMDD}-{HHMM}-{short-token}`
 
-- `role` = lead, sa, ba, backend, frontend, qa, code-reviewer, devops, codex
+- `role` = lead, sa, ba, **developer** (replaces backend + frontend since 2026-05-05), qa, code-reviewer, devops, codex
 - `YYYYMMDD-HHMM` = เวลาที่เปิด session (24h)
 - `short-token` = 3-char random hex เช่น `a3f`, `7c2`
 
-ตัวอย่าง: `lead-20260505-1430-a3f`, `backend-20260505-1435-7c2`
+ตัวอย่าง: `lead-20260505-1430-a3f`, `developer-20260505-1435-7c2`
 
 ## Working-files Convention
 

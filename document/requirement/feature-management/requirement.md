@@ -85,6 +85,7 @@ status: draft
   - [ ] หน้า detail แสดง preview "เมนูทั้งหมดที่ package นี้ปลด unlock" — รวม `menu_keys` ของทุก feature, dedupe
   - [ ] ลบ package → block ถ้ามี company อ้างอิง (`comp_companies.package_id`)
   - [ ] Schema ตรงตาม `subscription-package-summary.md` (id, uuid, name JSONB, billing_cycle, num_of_employees → user_limit, prices → price_amount/currency, is_recommend, is_contact_us)
+  - [ ] **(Added 2026-05-05)** super_admin แก้ไข `uuid` ของ package ได้ผ่าน dedicated endpoint `PATCH /packages/:packageUuid/identifier` — เพื่อ sync กับ Stripe product ID (uuid ของ package ต้อง match Stripe ที่เป็น 3rd party). Validation: format = uuid v4, unique ใน `comp_packages.uuid`, ไม่เท่ากับ uuid ปัจจุบัน. FK เดิมที่อ้าง `comp_packages.id` (numeric) ไม่ได้รับผลกระทบ (ทุก FK อ้าง id ภายใน ไม่ใช่ uuid)
 
 ### FR-3: Addon CRUD + จัดการ feature ของ addon
 - Description: super_admin จัดการ addon ที่ลูกค้าซื้อเสริมจาก package ได้ — addon ปลด features เพิ่มเติม
@@ -177,13 +178,16 @@ status: draft
 
 ## 9. Open Questions (คำถามที่ยังไม่ได้คำตอบ)
 
-> **Status: All resolved 2026-05-04** — ทุกคำถามได้ decision จาก stakeholder แล้ว ก่อนเริ่ม Phase 1
+> **Status: All resolved** — Q1-Q5 resolved 2026-05-04 (ก่อน Phase 1); Q6 resolved 2026-05-05 (จาก Wave F1 outbox)
 
 - [x] **Q1 — Seed `comp_package_features` mapping ครั้งแรก:** **Decision = C (Seed Cartesian product)** — Seed ทุก feature ใส่ทุก package เป็น default (เปิดเมนูทั้งหมดก่อน → admin ค่อยเข้ามาปิดเฉพาะ feature ที่ขายไม่ครบใน CMS) — เลือก C เพื่อกัน regression: ลูกค้าจะไม่เห็นเมนูหายตอน deploy → SSD/migration M3 ต้องเพิ่ม seed step
 - [x] **Q2 — เปลี่ยน package (upgrade/downgrade) → override:** **Decision = A (Keep override)** — `comp_company_features` ที่ admin ตั้งไว้คงอยู่หลัง package change → ไม่ต้องเปลี่ยน schema/logic, แค่ document ใน SSD §10 เพื่อความชัดเจน
 - [x] **Q3 — Addon expired (`expires_at < NOW()`):** **Decision = A (Auto-disable feature)** — Resolver ต้องเช็ค `expires_at IS NULL OR expires_at > NOW()` ก่อนนับ addon features เข้า union → SSD §6.2 + permissionResolver service ต้อง filter ตอน load `comp_company_addons`
 - [x] **Q4 — Soft-delete feature → override row:** **Decision = B (FK no-CASCADE + Resolver skip archived)** — `comp_company_features.feature_id` FK เป็น `ON DELETE RESTRICT` (ไม่ใช่ CASCADE) เพื่อ keep audit trail; Resolver filter `comp_features.status_type = 'active'` ก่อนนำ feature_id ไปคำนวณ effective menus → SSD §3.1.6 + migration M6 + permissionResolver service ต้องปรับ
 - [x] **Q5 — `comp_companies.add_ons` jsonb format:** **Resolved (2026-05-04)** — format = `Array<{ uuid: string; quantity: number }>` ยืนยันจาก migration `20260106-1645-add-addons-field.ts` + `compCompanies.model.ts` (line 55, 125, 189) + v2 admin payment/subscription module ใช้ format นี้สม่ำเสมอ → M7 SQL ใน `migration.md` ใช้ format นี้ได้เลย
+- [x] **Q6 — RBAC resource collision: `packages` มีอยู่แล้วใน `rbac.ts` (pre-existing) ใช้โดย `package-config-feature` view:** **Decision = A (ใช้ resource name ใหม่ `master_packages`)** (resolved 2026-05-05 จาก Wave F1 outbox) — Master Data Package Management UI จะใช้ key `"master_packages"` ใน components ที่เกี่ยวข้อง → existing `packages` resource คงเดิม ไม่กระทบ admin/manager/viewer ที่ใช้ `package-config-feature` view → frontend.md §4 ปรับแล้ว, F5 wave (Page B) ต้องเพิ่ม `master_packages` เข้า rbac.ts ก่อน implement components
+- [x] **Q7 — Slice file naming collision: legacy slice `sale-dashboard-feature-management` (per-company toggle + package info preview) ถูกใช้โดย 4 production views ก่อนแล้ว → F3 Master Data slices ชนชื่อ:** **Decision = B (rename-only)** (resolved 2026-05-05 จาก Wave F3 outbox + Lead dispatch) — rename legacy slice → `sale-dashboard-package-config-feature` (ตามชื่อ section folder), F3 Master Data slices กลับใช้ชื่อ `sale-dashboard-{feature,package,addon}-management` ตาม spec เดิม → pure rename ห้าม refactor logic, ห้ามแก้ action types ของ legacy → reducer slot keys / hook names / saga watcher names update ตามชื่อใหม่ → 4 importer views (`package-config-feature-view`, `edit-package-dialog`, `lead-information-tab`, `customer-information-tab`) update slot key / namespace ref → TS pass, prettier clean, behavior ของ legacy ไม่เปลี่ยน
+- [x] **Q8 — Frontend Addon `billingInterval` value mismatch backend:** Frontend F3 slice draft ใช้ `AddonBillingInterval = 'monthly' | 'yearly' | 'one_time'` แต่ backend B3 Zod ใช้ `z.enum(['month', 'year']).nullable()` (verified `addon.interface.ts` lines 34/81/113) — addon CRUD form ส่ง `'monthly'` ไป backend จะ reject 400 → **Decision (resolved 2026-05-05 จาก Wave F6 outbox + user A)**: rename `monthly→month`, `yearly→year`, drop `one_time` literal (semantic "One-time payment" ย้ายไปใช้ null per backend `nullable()`) → form select 3 options (One-time form value=`""` → wire `null`, Monthly `"month"`, Yearly `"year"`); mappers convert null↔"" ที่ form/payload boundary; i18n keys `addonManagement.billing.{month,year,one_time}` (one_time key คงไว้สำหรับ display label ของ null) → TS pass, prettier clean, en+th parity 89 keys; Package side ตรง backend อยู่แล้ว (F5 fix ตอน wave F5)
 
 ## 10. References
 

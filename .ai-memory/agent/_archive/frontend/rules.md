@@ -90,6 +90,57 @@
 
 ---
 
+## Standard Reporting Format (ส่งกลับ Lead เมื่อจบ task)
+
+> **กฏนี้บังคับใช้กับทุก task ที่ Frontend agent รับจาก Lead** — ไม่ต้องให้ Lead ระบุ format ใน prompt อีก เพราะ format อยู่ที่นี่แล้ว
+>
+> **อ้างอิง:** master rules §3.5.2 (Lead Prompt Composition Protocol — section 4 "สรุปสิ่งที่ทำ")
+
+เมื่อทำ task เสร็จ ให้ส่ง summary กลับ Lead เป็น **final message** ของ subagent run ในรูปแบบนี้ (กรอกค่าจริงทุก field — ห้ามขาด):
+
+```markdown
+## Wave/Task {ID} — Frontend Implementation Report
+
+### Files created/modified
+- `path/to/file.tsx` — {1-line note ว่าทำอะไร}
+- `path/to/another.ts` — {note}
+
+### TS / type-check status
+{pass | fail + reason} — command ที่ใช้: `npx tsc --noEmit` (หรือ project type-check script)
+
+### Prettier status
+{ran on: list of files | already conformant} — command: `npx prettier --write`
+
+### i18n key parity (ถ้า task แตะ locales)
+{en + th มี key ครบเท่ากันไหม — confirm parity หรือ flag drift}
+{ถ้าไม่แตะ locales เขียน "n/a"}
+
+### Tests written
+{count + path} หรือ "deferred per task instruction" หรือ "n/a"
+
+### Checklist update
+{list of items ticked พร้อม timestamp <!-- done: YYYY-MM-DD -->}
+
+### Anything blocked / questions for Lead
+{list ถ้ามี — เช่น spec ambiguity, RBAC collision, missing icon/asset, conflict กับ existing component, decision ที่ต้อง escalate}
+{ถ้าไม่มี เขียน "none"}
+
+### Task completion
+{%, ปกติ 100%}
+
+### Suggested next step
+{wave/task ถัดไปที่ logical — flag ถ้ามีอะไรที่ Lead ควรพักก่อน dispatch ต่อ}
+```
+
+**ข้อบังคับ:**
+
+- ✅ ทุก field ต้องกรอก (ใช้ "none" / "n/a" / "deferred" ได้ถ้าไม่มี — ห้ามเว้นว่าง)
+- ✅ "Anything blocked" ต้อง honest — flag ทุก ambiguity ที่เจอ (RBAC collision, asset missing, design ambiguous) Lead จะตัดสินใจเอง
+- ❌ ห้ามรวมงานนอก scope ที่ Lead ไม่ได้ assign
+- ❌ ห้ามยืนยัน "completion 100%" ถ้ายัง flag blocker
+
+---
+
 ## Output Quality Checklist
 
 - [ ] type check pass

@@ -83,6 +83,8 @@ owner: Lead
 | FEAT-143 | Module: `packageCrud/packageCrud.adapter.ts` | Backend | pending | | |
 | FEAT-144 | Routes: `packageCrud/packageCrud.controller.ts` + routes | Backend | pending | ssd.md §4.2 | |
 | FEAT-145 | Register packageCrud routes | Backend | pending | | |
+| FEAT-146 | (Added 2026-05-05) Add `updatePackageUuid` capability — interface schema, repository, service, controller, route at `PATCH /api/v2/admin/packages/:packageUuid/identifier` (Stripe product ID sync) | Backend | done | ssd.md §4.2 row PATCH; backend.md §1.2; checklist P2.15a-P2.15e | 2026-05-05 |
+| FEAT-147 | (Added 2026-05-05) Frontend counterpart of FEAT-146 — extend package-management slice (action/reducer/saga/service) + reusable dialog component for super_admin to PATCH package uuid (Stripe sync) | Frontend | pending | checklist F2.36-F2.40 | |
 | FEAT-150 | Module: `addon/addon.interface.ts` (validate is_quantifiable→max_quantity) | Backend | pending | | |
 | FEAT-151 | Module: `addon/addon.repository.ts` | Backend | pending | | |
 | FEAT-152 | Module: `addon/addon.service.ts` | Backend | pending | | |

@@ -82,49 +82,50 @@ src/
 
 ## 1. API Routes (v2)
 
-### 1.1 Feature CRUD — `/api/v2/admin/features`
+### 1.1 Feature CRUD — `/api/v2/sale-dashboard/features`
 
 | Method | Path                                         | Controller                       | Description                                                                 |
 | ------ | -------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
-| GET    | `/api/v2/admin/features`                     | `getFeatureListController`       | List feature ทั้งหมด (รองรับ search, sort, pagination)                      |
-| GET    | `/api/v2/admin/features/:featureUuid`        | `getFeatureByUuidController`     | Get feature โดย uuid (รวมข้อมูล package/addon ที่อ้างอิง)                   |
-| POST   | `/api/v2/admin/features`                     | `createFeatureController`        | สร้าง feature ใหม่                                                          |
-| PUT    | `/api/v2/admin/features/:featureUuid`        | `updateFeatureController`        | แก้ไข feature (รวม menu_keys)                                               |
-| DELETE | `/api/v2/admin/features/:featureUuid`        | `deleteFeatureController`        | Soft-delete feature (block ถ้ามี package/addon ผูกอยู่)                     |
-| GET    | `/api/v2/admin/features/menu-keys/available` | `getAvailableMenuKeysController` | Return leaf paths ทั้งหมดจาก `PermissionDefault` (สำหรับ frontend dropdown) |
+| GET    | `/api/v2/sale-dashboard/features`                     | `getFeatureListController`       | List feature ทั้งหมด (รองรับ search, sort, pagination)                      |
+| GET    | `/api/v2/sale-dashboard/features/:featureUuid`        | `getFeatureByUuidController`     | Get feature โดย uuid (รวมข้อมูล package/addon ที่อ้างอิง)                   |
+| POST   | `/api/v2/sale-dashboard/features`                     | `createFeatureController`        | สร้าง feature ใหม่                                                          |
+| PUT    | `/api/v2/sale-dashboard/features/:featureUuid`        | `updateFeatureController`        | แก้ไข feature (รวม menu_keys)                                               |
+| DELETE | `/api/v2/sale-dashboard/features/:featureUuid`        | `deleteFeatureController`        | Soft-delete feature (block ถ้ามี package/addon ผูกอยู่)                     |
+| GET    | `/api/v2/sale-dashboard/features/menu-keys/available` | `getAvailableMenuKeysController` | Return leaf paths ทั้งหมดจาก `PermissionDefault` (สำหรับ frontend dropdown) |
 
 **Middleware ทุก route:** `validateAccessToken` → `requireSuperAdmin` → `validateRequest(zodSchema)`
 
-### 1.2 Package CRUD — `/api/v2/admin/packages`
+### 1.2 Package CRUD — `/api/v2/sale-dashboard/packages`
 
 | Method | Path                                                  | Controller                           | Description                                                                 |
 | ------ | ----------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------- |
-| GET    | `/api/v2/admin/packages`                              | `getPackageListController`           | List packages พร้อมจำนวน feature ที่ผูก                                     |
-| GET    | `/api/v2/admin/packages/:packageUuid`                 | `getPackageByUuidController`         | Get package + feature list                                                  |
-| POST   | `/api/v2/admin/packages`                              | `createPackageController`            | สร้าง package ใหม่                                                          |
-| PUT    | `/api/v2/admin/packages/:packageUuid`                 | `updatePackageController`            | แก้ไข metadata package (ยกเว้น features)                                    |
-| DELETE | `/api/v2/admin/packages/:packageUuid`                 | `deletePackageController`            | Soft-delete package (block ถ้ามี company อ้างอิง)                           |
-| PUT    | `/api/v2/admin/packages/:packageUuid/features`        | `replacePackageFeaturesController`   | Replace feature list ของ package — body: `{featureUuids: string[]}`         |
-| GET    | `/api/v2/admin/packages/:packageUuid/effective-menus` | `getPackageEffectiveMenusController` | Preview เมนูที่ package นี้จะปลดล็อก (รวม menu_keys ของทุก feature, dedupe) |
+| GET    | `/api/v2/sale-dashboard/packages`                              | `getPackageListController`           | List packages พร้อมจำนวน feature ที่ผูก                                     |
+| GET    | `/api/v2/sale-dashboard/packages/:packageUuid`                 | `getPackageByUuidController`         | Get package + feature list                                                  |
+| POST   | `/api/v2/sale-dashboard/packages`                              | `createPackageController`            | สร้าง package ใหม่                                                          |
+| PUT    | `/api/v2/sale-dashboard/packages/:packageUuid`                 | `updatePackageController`            | แก้ไข metadata package (ยกเว้น features)                                    |
+| DELETE | `/api/v2/sale-dashboard/packages/:packageUuid`                 | `deletePackageController`            | Soft-delete package (block ถ้ามี company อ้างอิง)                           |
+| PUT    | `/api/v2/sale-dashboard/packages/:packageUuid/features`        | `replacePackageFeaturesController`   | Replace feature list ของ package — body: `{featureUuids: string[]}`         |
+| GET    | `/api/v2/sale-dashboard/packages/:packageUuid/effective-menus` | `getPackageEffectiveMenusController` | Preview เมนูที่ package นี้จะปลดล็อก (รวม menu_keys ของทุก feature, dedupe) |
+| PATCH  | `/api/v2/sale-dashboard/packages/:packageUuid/identifier`      | `updatePackageUuidController`        | **(Added 2026-05-05)** แก้ไข uuid ของ package เพื่อ sync กับ Stripe product ID — body: `{newUuid: string (uuid v4)}` — validate format/unique/≠current; ทุก FK ที่ pointing ไป `comp_packages.id` (numeric) ไม่ได้รับผลกระทบ |
 
-### 1.3 Addon CRUD — `/api/v2/admin/addons`
+### 1.3 Addon CRUD — `/api/v2/sale-dashboard/addons`
 
 | Method | Path                                       | Controller                       | Description                                                                |
 | ------ | ------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------- |
-| GET    | `/api/v2/admin/addons`                     | `getAddonListController`         | List addons                                                                |
-| GET    | `/api/v2/admin/addons/:addonUuid`          | `getAddonByUuidController`       | Get addon + feature list                                                   |
-| POST   | `/api/v2/admin/addons`                     | `createAddonController`          | สร้าง addon ใหม่ (validate `is_quantifiable=true → max_quantity required`) |
-| PUT    | `/api/v2/admin/addons/:addonUuid`          | `updateAddonController`          | แก้ไข metadata addon                                                       |
-| DELETE | `/api/v2/admin/addons/:addonUuid`          | `deleteAddonController`          | Soft-delete (block ถ้ามี company purchase อยู่)                            |
-| PUT    | `/api/v2/admin/addons/:addonUuid/features` | `replaceAddonFeaturesController` | Replace feature list — body: `{featureUuids: string[]}`                    |
+| GET    | `/api/v2/sale-dashboard/addons`                     | `getAddonListController`         | List addons                                                                |
+| GET    | `/api/v2/sale-dashboard/addons/:addonUuid`          | `getAddonByUuidController`       | Get addon + feature list                                                   |
+| POST   | `/api/v2/sale-dashboard/addons`                     | `createAddonController`          | สร้าง addon ใหม่ (validate `is_quantifiable=true → max_quantity required`) |
+| PUT    | `/api/v2/sale-dashboard/addons/:addonUuid`          | `updateAddonController`          | แก้ไข metadata addon                                                       |
+| DELETE | `/api/v2/sale-dashboard/addons/:addonUuid`          | `deleteAddonController`          | Soft-delete (block ถ้ามี company purchase อยู่)                            |
+| PUT    | `/api/v2/sale-dashboard/addons/:addonUuid/features` | `replaceAddonFeaturesController` | Replace feature list — body: `{featureUuids: string[]}`                    |
 
-### 1.4 Company Feature Toggle — `/api/v2/admin/companies/:companyUuid/features`
+### 1.4 Company Feature Toggle — `/api/v2/companies/:companyUuid/features`
 
 | Method | Path                                                         | Controller                               | Description                                                                                                                                                                              |
 | ------ | ------------------------------------------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v2/admin/companies/:companyUuid/features`              | `getCompanyFeaturesController`           | List feature ทั้งหมด พร้อมสถานะ effective + source ของแต่ละ feature: `{featureUuid, name, enabled, source: 'package'/'addon'/'override-enabled'/'override-disabled'/'default-disabled'}` |
-| PUT    | `/api/v2/admin/companies/:companyUuid/features/:featureUuid` | `setCompanyFeatureOverrideController`    | Upsert override — body: `{enabled: bool, reason?: string}`                                                                                                                               |
-| DELETE | `/api/v2/admin/companies/:companyUuid/features/:featureUuid` | `removeCompanyFeatureOverrideController` | ลบ override → กลับไปใช้ default จาก package/addon                                                                                                                                        |
+| GET    | `/api/v2/companies/:companyUuid/features`              | `getCompanyFeaturesController`           | List feature ทั้งหมด พร้อมสถานะ effective + source ของแต่ละ feature: `{featureUuid, name, enabled, source: 'package'/'addon'/'override-enabled'/'override-disabled'/'default-disabled'}` |
+| PUT    | `/api/v2/companies/:companyUuid/features/:featureUuid` | `setCompanyFeatureOverrideController`    | Upsert override — body: `{enabled: bool, reason?: string}`                                                                                                                               |
+| DELETE | `/api/v2/companies/:companyUuid/features/:featureUuid` | `removeCompanyFeatureOverrideController` | ลบ override → กลับไปใช้ default จาก package/addon                                                                                                                                        |
 
 ---
 
@@ -257,6 +258,7 @@ export interface PackageWithFeatures extends Package {
 - `countPackageUsageRepository(packageId)` — count `comp_companies.package_id`
 - `getPackageFeaturesRepository(packageId): Promise<Feature[]>`
 - `replacePackageFeaturesRepository(packageId, featureIds[]): Promise<void>` — transaction: delete all + insert new
+- **(Added 2026-05-05)** `updatePackageUuidRepository(currentUuid, newUuid, updatedBy)` — UPDATE `comp_packages` SET `uuid = newUuid`, `updated_by`, `updated_at = NOW()` WHERE `uuid = currentUuid`; ใช้ transaction เพื่อ atomic + isolation
 
 #### packageCrud.service.ts (functions)
 
@@ -267,6 +269,7 @@ export interface PackageWithFeatures extends Package {
 - `deletePackageService` (block ถ้ามี company อ้างอิง)
 - `replacePackageFeaturesService(packageUuid, featureUuids[])` — convert uuid→id, validate ทุก feature exists
 - `getPackageEffectiveMenusService(packageUuid): Promise<string[]>` — รวม menu_keys ของทุก feature, dedupe
+- **(Added 2026-05-05)** `updatePackageUuidService(currentUuid, newUuid, actor)` — Stripe-sync: validate `newUuid` (1) format = uuid v4, (2) ≠ current uuid, (3) ห้ามซ้ำกับ row อื่นใน `comp_packages.uuid`; เรียก repo update ภายใน trx; return `Package` ที่ update แล้ว. **Caveat:** ถ้ามี denormalized `package_uuid` ใน table อื่น (เช่น legacy `comp_companies.selected_package_uuid` ที่อาจจะยังคงอยู่หลัง M8) → ต้อง update ตามด้วย ใน trx เดียวกัน. Backend agent ต้อง grep หา denormalized references ก่อน implement และรายงานกลับ Lead ถ้าเจอ
 
 ### 2.3 `modules/v2/admin/addon/`
 
@@ -490,13 +493,13 @@ export const getAvailableMenuKeys = (): string[] => {
 
 ## 7. Route Registration
 
-อัพเดต `src/api/v2/admin/index.routes.ts` (หรือ root routes) เพื่อ register sub-routers:
+อัพเดต `src/api/v2/index.routes.ts` (หรือ root routes) เพื่อ register sub-routers:
 
 ```typescript
-import featureRouter from "@/api/v2/admin/feature/feature.routes";
-import packageCrudRouter from "@/api/v2/admin/packageCrud/packageCrud.routes";
-import addonRouter from "@/api/v2/admin/addon/addon.routes";
-import companyFeatureRouter from "@/api/v2/admin/companyFeature/companyFeature.routes";
+import featureRouter from "@/api/v2/feature/feature.routes";
+import packageCrudRouter from "@/api/v2/packageCrud/packageCrud.routes";
+import addonRouter from "@/api/v2/addon/addon.routes";
+import companyFeatureRouter from "@/api/v2/companyFeature/companyFeature.routes";
 
 router.use("/features", featureRouter);
 router.use("/packages", packageCrudRouter);

@@ -35,9 +35,11 @@ Implement `mof-backend` type-safety cleanup
 - [x] อ่าน `.ai-memory/agent/codex/skills.md` <!-- done: 2026-04-29 -->
 - [x] อ่าน `.ai-memory/agent/codex/current-task.md` <!-- done: 2026-04-29 -->
 - [x] อ่าน `.ai-memory/current.md` <!-- done: 2026-04-29 -->
-- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/rules.md` <!-- done: 2026-04-29 -->
-- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/skills.md` <!-- done: 2026-04-29 -->
-- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/current-task.md` <!-- done: 2026-04-29 -->
+- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/rules.md` <!-- done: 2026-04-29; path archived to _archive/backend/rules.md on 2026-05-05 (merged → developer) -->
+- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/skills.md` <!-- done: 2026-04-29; path archived -->
+- [x] ถ้าสวม specialist role: อ่าน `.ai-memory/agent/backend/current-task.md` <!-- done: 2026-04-29; path archived -->
+
+> **Note (2026-05-05):** backend + frontend agents merged into `developer`. ไฟล์ historical references ด้านบนนี้ตอนนี้อยู่ที่ `.ai-memory/agent/_archive/backend/` — ถ้าทำ task ใหม่ในบทบาท implementation ให้สวม `developer` role แทน (อ่าน `.ai-memory/agent/developer/{rules,skills,current-task}.md`)
 
 ## Sub-checklist
 
