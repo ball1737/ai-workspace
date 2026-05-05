@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --no-install prettier --version)",
+      "Bash(npx --no-install prettier --write .ai-memory/rules.md .ai-memory/agent/backend/rules.md .ai-memory/agent/frontend/rules.md)",
+      "Bash(npx prettier *)",
+      "Bash(npx eslint *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npx --no-install prettier --write .ai-memory/rules.md)",
+      "Bash(git commit *)",
+      "Read(//private/var/folders/_b/md6gksj51_nb13k93zxdrsgh0000gn/T/**)"
+    ],
+    "additionalDirectories": [
+      "/var/folders/_b/md6gksj51_nb13k93zxdrsgh0000gn/T"
+    ]
+  }
+}

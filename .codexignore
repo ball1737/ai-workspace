@@ -1,0 +1,39 @@
+# Build / generated output
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/out/
+**/.turbo/
+
+# Lock files
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# Database migrations (read only when task is about migrations)
+**/migrations/
+
+# Static assets
+**/assets/images/
+**/assets/fonts/
+**/public/images/
+**/public/fonts/
+
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+
+# IDE / OS files
+**/.DS_Store
+**/.vscode/
+**/.idea/
+
+# Test snapshots
+**/__snapshots__/
+
+# Logs
+**/logs/
+**/*.log

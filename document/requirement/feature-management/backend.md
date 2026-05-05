@@ -1,0 +1,550 @@
+---
+feature: feature-management
+type: feature-backend-detail
+created: 2026-05-04
+updated: 2026-05-04
+owner: SA (initial), Backend Dev (implementation)
+status: draft
+---
+
+# Feature Management — Backend Detail
+
+> รายละเอียด backend ทั้งหมด: routes, controllers, services, repositories, models
+> Reference pattern: `happywork-backend/src/api/v1/employee/request/*` + `src/modules/v1/employee/request/*`
+
+---
+
+## โครงสร้างโดยรวม
+
+ระบบ feature management ใหม่ทั้งหมดอยู่ใต้ namespace **v2/admin** เพื่อ align กับ Stripe flow v2
+
+```
+src/
+├── api/v2/admin/
+│   ├── feature/                       # CRUD master features
+│   │   ├── feature.routes.ts
+│   │   └── feature.controller.ts
+│   ├── packageCrud/                   # CRUD master packages (ชื่อต่างจาก v2/admin/package เดิม)
+│   │   ├── packageCrud.routes.ts
+│   │   └── packageCrud.controller.ts
+│   ├── addon/                         # CRUD master addons
+│   │   ├── addon.routes.ts
+│   │   └── addon.controller.ts
+│   └── companyFeature/                # Per-company feature override
+│       ├── companyFeature.routes.ts
+│       └── companyFeature.controller.ts
+│
+├── modules/v2/admin/
+│   ├── feature/
+│   │   ├── feature.interface.ts
+│   │   ├── feature.repository.ts
+│   │   ├── feature.service.ts
+│   │   └── feature.adapter.ts
+│   ├── packageCrud/
+│   │   ├── packageCrud.interface.ts
+│   │   ├── packageCrud.repository.ts
+│   │   ├── packageCrud.service.ts
+│   │   └── packageCrud.adapter.ts
+│   ├── addon/
+│   │   ├── addon.interface.ts
+│   │   ├── addon.repository.ts
+│   │   ├── addon.service.ts
+│   │   └── addon.adapter.ts
+│   ├── companyFeature/
+│   │   ├── companyFeature.interface.ts
+│   │   ├── companyFeature.repository.ts
+│   │   ├── companyFeature.service.ts
+│   │   └── companyFeature.adapter.ts
+│   └── permissionResolver/            # Shared resolver
+│       ├── permissionResolver.interface.ts
+│       ├── permissionResolver.repository.ts
+│       └── permissionResolver.service.ts
+│
+├── database/postgresql/
+│   ├── migrations/data/               # ดู migration.md
+│   └── models/data/
+│       ├── compFeatures.model.ts
+│       ├── compPackages.model.ts
+│       ├── compPackageFeatures.model.ts
+│       ├── compAddons.model.ts
+│       ├── compAddonFeatures.model.ts
+│       ├── compCompanyFeatures.model.ts
+│       └── compCompanyAddons.model.ts
+│
+├── middlewares/
+│   └── requireSuperAdmin.middleware.ts (ถ้ายังไม่มี — เช็ค role super_admin)
+│
+└── constant/
+    └── compPermission.ts              # เพิ่ม helper getAvailableMenuKeys()
+```
+
+---
+
+## 1. API Routes (v2)
+
+### 1.1 Feature CRUD — `/api/v2/admin/features`
+
+| Method | Path                                         | Controller                       | Description                                                                 |
+| ------ | -------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
+| GET    | `/api/v2/admin/features`                     | `getFeatureListController`       | List feature ทั้งหมด (รองรับ search, sort, pagination)                      |
+| GET    | `/api/v2/admin/features/:featureUuid`        | `getFeatureByUuidController`     | Get feature โดย uuid (รวมข้อมูล package/addon ที่อ้างอิง)                   |
+| POST   | `/api/v2/admin/features`                     | `createFeatureController`        | สร้าง feature ใหม่                                                          |
+| PUT    | `/api/v2/admin/features/:featureUuid`        | `updateFeatureController`        | แก้ไข feature (รวม menu_keys)                                               |
+| DELETE | `/api/v2/admin/features/:featureUuid`        | `deleteFeatureController`        | Soft-delete feature (block ถ้ามี package/addon ผูกอยู่)                     |
+| GET    | `/api/v2/admin/features/menu-keys/available` | `getAvailableMenuKeysController` | Return leaf paths ทั้งหมดจาก `PermissionDefault` (สำหรับ frontend dropdown) |
+
+**Middleware ทุก route:** `validateAccessToken` → `requireSuperAdmin` → `validateRequest(zodSchema)`
+
+### 1.2 Package CRUD — `/api/v2/admin/packages`
+
+| Method | Path                                                  | Controller                           | Description                                                                 |
+| ------ | ----------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------- |
+| GET    | `/api/v2/admin/packages`                              | `getPackageListController`           | List packages พร้อมจำนวน feature ที่ผูก                                     |
+| GET    | `/api/v2/admin/packages/:packageUuid`                 | `getPackageByUuidController`         | Get package + feature list                                                  |
+| POST   | `/api/v2/admin/packages`                              | `createPackageController`            | สร้าง package ใหม่                                                          |
+| PUT    | `/api/v2/admin/packages/:packageUuid`                 | `updatePackageController`            | แก้ไข metadata package (ยกเว้น features)                                    |
+| DELETE | `/api/v2/admin/packages/:packageUuid`                 | `deletePackageController`            | Soft-delete package (block ถ้ามี company อ้างอิง)                           |
+| PUT    | `/api/v2/admin/packages/:packageUuid/features`        | `replacePackageFeaturesController`   | Replace feature list ของ package — body: `{featureUuids: string[]}`         |
+| GET    | `/api/v2/admin/packages/:packageUuid/effective-menus` | `getPackageEffectiveMenusController` | Preview เมนูที่ package นี้จะปลดล็อก (รวม menu_keys ของทุก feature, dedupe) |
+
+### 1.3 Addon CRUD — `/api/v2/admin/addons`
+
+| Method | Path                                       | Controller                       | Description                                                                |
+| ------ | ------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------- |
+| GET    | `/api/v2/admin/addons`                     | `getAddonListController`         | List addons                                                                |
+| GET    | `/api/v2/admin/addons/:addonUuid`          | `getAddonByUuidController`       | Get addon + feature list                                                   |
+| POST   | `/api/v2/admin/addons`                     | `createAddonController`          | สร้าง addon ใหม่ (validate `is_quantifiable=true → max_quantity required`) |
+| PUT    | `/api/v2/admin/addons/:addonUuid`          | `updateAddonController`          | แก้ไข metadata addon                                                       |
+| DELETE | `/api/v2/admin/addons/:addonUuid`          | `deleteAddonController`          | Soft-delete (block ถ้ามี company purchase อยู่)                            |
+| PUT    | `/api/v2/admin/addons/:addonUuid/features` | `replaceAddonFeaturesController` | Replace feature list — body: `{featureUuids: string[]}`                    |
+
+### 1.4 Company Feature Toggle — `/api/v2/admin/companies/:companyUuid/features`
+
+| Method | Path                                                         | Controller                               | Description                                                                                                                                                                              |
+| ------ | ------------------------------------------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v2/admin/companies/:companyUuid/features`              | `getCompanyFeaturesController`           | List feature ทั้งหมด พร้อมสถานะ effective + source ของแต่ละ feature: `{featureUuid, name, enabled, source: 'package'/'addon'/'override-enabled'/'override-disabled'/'default-disabled'}` |
+| PUT    | `/api/v2/admin/companies/:companyUuid/features/:featureUuid` | `setCompanyFeatureOverrideController`    | Upsert override — body: `{enabled: bool, reason?: string}`                                                                                                                               |
+| DELETE | `/api/v2/admin/companies/:companyUuid/features/:featureUuid` | `removeCompanyFeatureOverrideController` | ลบ override → กลับไปใช้ default จาก package/addon                                                                                                                                        |
+
+---
+
+## 2. Modules (Business Logic)
+
+### 2.1 `modules/v2/admin/feature/`
+
+#### feature.interface.ts
+
+```typescript
+import { z } from "zod";
+
+export const featureBaseSchema = z.object({
+  code: z
+    .string()
+    .min(1)
+    .max(50)
+    .regex(/^[a-z0-9_]+$/),
+  name: z.object({ th: z.string().min(1), en: z.string().min(1) }),
+  description: z.object({ th: z.string(), en: z.string() }).optional(),
+  menuKeys: z.array(z.string()).default([]),
+  sortOrder: z.number().int().default(0),
+});
+
+export const createFeatureSchema = z.object({
+  body: featureBaseSchema,
+});
+
+export const updateFeatureSchema = z.object({
+  params: z.object({ featureUuid: z.string().uuid() }),
+  body: featureBaseSchema.partial(),
+});
+
+export const listFeaturesSchema = z.object({
+  query: z.object({
+    search: z.string().optional(),
+    sortBy: z
+      .enum(["name", "code", "sortOrder", "createdAt"])
+      .default("sortOrder"),
+    sortOrder: z.enum(["asc", "desc"]).default("asc"),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    statusType: z.enum(["active", "inactive"]).optional(),
+  }),
+});
+
+export interface Feature {
+  uuid: string;
+  code: string;
+  name: { th: string; en: string };
+  description?: { th: string; en: string };
+  menuKeys: string[];
+  sortOrder: number;
+  statusType: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeatureWithUsage extends Feature {
+  packageCount: number; // จำนวน package ที่อ้างอิง feature นี้
+  addonCount: number;
+}
+```
+
+#### feature.repository.ts (functions)
+
+- `getFeatureByIdRepository(id: string): Promise<FeatureRow | null>`
+- `getFeatureByUuidRepository(uuid: string): Promise<FeatureRow | null>`
+- `getFeatureByCodeRepository(code: string): Promise<FeatureRow | null>` (สำหรับ uniqueness check)
+- `listFeaturesRepository(filter, pagination): Promise<{rows, total}>`
+- `createFeatureRepository(data, createdBy): Promise<FeatureRow>`
+- `updateFeatureRepository(uuid, data, updatedBy): Promise<FeatureRow>`
+- `softDeleteFeatureRepository(uuid, archivedBy): Promise<void>`
+- `countFeatureUsageRepository(featureId): Promise<{packages: number, addons: number}>` (เช็คก่อน delete)
+
+#### feature.service.ts (functions)
+
+- `getFeatureListService(filter, pagination): Promise<{features: FeatureWithUsage[], total}>`
+- `getFeatureByUuidService(uuid): Promise<FeatureWithUsage>`
+- `createFeatureService(input, createdBy): Promise<Feature>`
+  - Validate `code` unique
+  - Validate `menuKeys` ทุกตัวอยู่ใน `getAvailableMenuKeys()` (จาก `compPermission.ts`)
+- `updateFeatureService(uuid, input, updatedBy): Promise<Feature>`
+- `deleteFeatureService(uuid, archivedBy): Promise<void>`
+  - เรียก `countFeatureUsageRepository` ก่อน — block ถ้า package/addon > 0
+- `getAvailableMenuKeysService(): Promise<string[]>` — wrap helper จาก constant
+
+#### feature.adapter.ts
+
+- `convertFeatureToResponse(row: FeatureRow): Feature` — แปลง snake_case → camelCase, hide `id`
+- `normalizeFeatureListResponse(rows, totalCount, page, limit): PaginatedResponse<Feature>`
+
+### 2.2 `modules/v2/admin/packageCrud/`
+
+#### packageCrud.interface.ts
+
+```typescript
+export const packageBaseSchema = z.object({
+  code: z.string().min(1).max(50),
+  name: z.object({ th: z.string(), en: z.string() }),
+  shortName: z.string().max(50).optional(),
+  description: z.object({ th: z.string(), en: z.string() }).optional(),
+  billingInterval: z.enum(["month", "year"]).nullable(),
+  priceAmount: z.number().min(0),
+  currency: z.string().default("thb"),
+  userLimitMin: z.number().int().nullable(),
+  userLimitMax: z.number().int().nullable(),
+  isRecommend: z.boolean().default(false),
+  isContactUs: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  sortOrder: z.number().int().default(0),
+});
+
+export interface Package {
+  /* ... */
+}
+export interface PackageWithFeatures extends Package {
+  features: Feature[];
+  effectiveMenuKeys: string[];
+}
+```
+
+#### packageCrud.repository.ts (functions)
+
+- `getPackageByIdRepository`, `getPackageByUuidRepository`, `getPackageByCodeRepository`
+- `listPackagesRepository(filter, pagination)`
+- `createPackageRepository(data, createdBy)`
+- `updatePackageRepository(uuid, data, updatedBy)`
+- `softDeletePackageRepository(uuid)`
+- `countPackageUsageRepository(packageId)` — count `comp_companies.package_id`
+- `getPackageFeaturesRepository(packageId): Promise<Feature[]>`
+- `replacePackageFeaturesRepository(packageId, featureIds[]): Promise<void>` — transaction: delete all + insert new
+
+#### packageCrud.service.ts (functions)
+
+- `getPackageListService`
+- `getPackageByUuidService` — return พร้อม features list
+- `createPackageService` (validate code unique)
+- `updatePackageService`
+- `deletePackageService` (block ถ้ามี company อ้างอิง)
+- `replacePackageFeaturesService(packageUuid, featureUuids[])` — convert uuid→id, validate ทุก feature exists
+- `getPackageEffectiveMenusService(packageUuid): Promise<string[]>` — รวม menu_keys ของทุก feature, dedupe
+
+### 2.3 `modules/v2/admin/addon/`
+
+โครงสร้างเหมือน packageCrud แต่:
+
+- เพิ่ม validation: `isQuantifiable=true` → ต้องมี `maxQuantity > 0`
+- `replaceAddonFeaturesService` คล้าย package
+- ไม่มี `comp_companies.addon_id` ที่ block delete แต่ check `comp_company_addons` แทน
+
+### 2.4 `modules/v2/admin/companyFeature/`
+
+#### companyFeature.service.ts (key functions)
+
+```typescript
+// Return รายการ feature ทั้งหมด พร้อมสถานะของบริษัทนี้
+export const getCompanyFeaturesService = async (
+  companyUuid: string,
+): Promise<CompanyFeatureItem[]> => {
+  // 1. ดึง company → company.id, package_id
+  // 2. ดึง features ทั้งหมดจาก comp_features
+  // 3. ดึง package_features (set ของ feature_id ที่ package เปิด)
+  // 4. ดึง company_addons → addon_features (set ของ feature_id ที่ addons เปิด)
+  // 5. ดึง overrides จาก comp_company_features
+  // 6. สำหรับแต่ละ feature: คำนวณ effective + source
+  //    - source = 'override-enabled' if override.status='enabled'
+  //    - source = 'override-disabled' if override.status='disabled'
+  //    - source = 'package' if no override and in package_features
+  //    - source = 'addon' if no override and in addon_features
+  //    - source = 'default-disabled' otherwise
+};
+
+export const setCompanyFeatureOverrideService = async (
+  companyUuid: string,
+  featureUuid: string,
+  enabled: boolean,
+  reason: string | undefined,
+  actorUserUuid: string,
+): Promise<void> => {
+  // upsert ใน comp_company_features
+  // override_status = enabled ? 'enabled' : 'disabled'
+};
+
+export const removeCompanyFeatureOverrideService = async (
+  companyUuid: string,
+  featureUuid: string,
+  actorUserUuid: string,
+): Promise<void> => {
+  // hard delete ของ row ใน comp_company_features (กลับไป default)
+};
+```
+
+### 2.5 `modules/v2/admin/permissionResolver/` (SHARED)
+
+โมดูลกลางที่ใช้ทั้งใน v1 และ v2 (call จาก existing endpoints ที่ return permission)
+
+#### permissionResolver.service.ts
+
+```typescript
+// คืน Set<feature_id> ที่ effective ของบริษัท
+export const resolveCompanyEffectiveFeatureIdsService = async (
+  companyId: string
+): Promise<Set<string>>;
+
+// คืน Set<menu_key> (path เช่น "payroll.payrollSetting") ที่ enabled
+export const resolveCompanyEffectiveMenuKeysService = async (
+  companyId: string
+): Promise<Set<string>>;
+
+// Filter PermissionDefault-shaped JSONB ตัด key ที่ leaf path ไม่อยู่ใน allowedMenuKeys
+export const filterPermissionByMenuKeysService = (
+  permissionJsonb: Record<string, unknown>,
+  allowedMenuKeys: Set<string>
+): Record<string, unknown>;
+
+// Convenience: load comp_permission ของ user → filter → return
+export const resolveUserEffectivePermissionService = async (
+  userUuid: string
+): Promise<Record<string, unknown>>;
+```
+
+**Performance:** ใช้ in-request memoization (cache ผลลัพธ์ของ `resolveCompanyEffectiveMenuKeysService` ต่อ request) เพื่อกัน N+1
+
+---
+
+## 3. Database Models (Objection.js)
+
+ทุก model define:
+
+- `tableName`
+- `idColumn = 'id'`
+- `jsonSchema` validation
+- `relationMappings` (ใช้ `BelongsToOneRelation`, `HasManyRelation`, `ManyToManyRelation`)
+- TS interface สำหรับ row type
+
+### compFeatures.model.ts
+
+```typescript
+export class CompFeatures extends Model {
+  static tableName = "comp_features";
+  static idColumn = "id";
+
+  id!: string;
+  uuid!: string;
+  code!: string;
+  name!: { th: string; en: string };
+  description?: { th: string; en: string };
+  menu_keys!: string[];
+  sort_order!: number;
+  status_type!: string;
+  // ... timestamps
+
+  static relationMappings = {
+    packages: {
+      relation: Model.ManyToManyRelation,
+      modelClass: () => CompPackages,
+      join: {
+        from: "comp_features.id",
+        through: {
+          from: "comp_package_features.feature_id",
+          to: "comp_package_features.package_id",
+        },
+        to: "comp_packages.id",
+      },
+    },
+    addons: {
+      /* similar */
+    },
+    companyOverrides: {
+      relation: Model.HasManyRelation,
+      modelClass: () => CompCompanyFeatures,
+      join: {
+        from: "comp_features.id",
+        to: "comp_company_features.feature_id",
+      },
+    },
+  };
+}
+```
+
+(โครงเดียวกันสำหรับ `compPackages`, `compAddons`, `compCompanyFeatures`, `compCompanyAddons` — ดู link tables เป็น `extends Model` ปกติ)
+
+---
+
+## 4. Updates ของ Existing API ที่ใช้ `comp_permission` (Phase 4)
+
+### 4.1 จุดที่ต้องแก้
+
+| File                                                 | สิ่งที่ต้องทำ                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `src/api/external/auth/permissions.controller.ts`    | `getPermissionsController` → เรียก `resolveUserEffectivePermissionService` แทน `getPermissionsService` ตรงๆ        |
+| `src/modules/v1/externalAuth/permissions.service.ts` | `getPermissionsService(userUuid)` → load mapping → load comp_permission → filter ผ่าน resolver → return            |
+| `src/modules/v1/admin/compPermission/*`              | List endpoint ของ comp_permission ใน CMS เดิม → filter เมนูที่ list ตาม company effective menus                    |
+| `src/modules/v1/admin/compPermissionMapping/*`       | ตอน save permission JSONB ของ user → validate ว่า key ที่จะ save อยู่ใน enabled menus ของบริษัท (reject ถ้าไม่ใช่) |
+
+### 4.2 หลักการ
+
+- `comp_permission.permission` JSONB ยังเก็บข้อมูลเต็ม (ไม่ตัด)
+- Resolver filter ตอน **อ่าน** เท่านั้น
+- Frontend Permission Management UI (ของเดิม): filter เมนูที่แสดง ตาม company effective menus
+
+---
+
+## 5. Authorization Middleware
+
+### `requireSuperAdmin.middleware.ts` (สร้างใหม่)
+
+```typescript
+import { Request, Response, NextFunction } from "express";
+import { AppError } from "@/utils/error";
+
+export const requireSuperAdmin = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  if (req.user?.role !== "super_admin") {
+    throw new AppError("ไม่มีสิทธิ์เข้าถึง", 403, 403);
+  }
+  next();
+};
+```
+
+ใช้ใน routes ทั้งหมดของ feature management
+
+---
+
+## 6. Constants Update
+
+### `src/constant/compPermission.ts`
+
+เพิ่ม helper:
+
+```typescript
+/**
+ * คืน leaf paths ทั้งหมดจาก PermissionDefault (Dev + Prod รวมกัน, dedupe)
+ * ใช้ใน feature CRUD UI สำหรับ dropdown ของ menu_keys
+ */
+export const getAvailableMenuKeys = (): string[] => {
+  const result = new Set<string>();
+
+  const walk = (obj: Record<string, any>, prefix = "") => {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value !== "object" || value === null) continue;
+      const path = prefix ? `${prefix}.${key}` : key;
+      // ถ้า value มี read/create/etc → ถือเป็น leaf
+      if ("read" in value || "create" in value) {
+        result.add(path);
+      } else {
+        walk(value, path);
+      }
+    }
+  };
+
+  walk(PermissionDefaultDev);
+  walk(PermissionDefaultProd);
+  return Array.from(result).sort();
+};
+```
+
+---
+
+## 7. Route Registration
+
+อัพเดต `src/api/v2/admin/index.routes.ts` (หรือ root routes) เพื่อ register sub-routers:
+
+```typescript
+import featureRouter from "@/api/v2/admin/feature/feature.routes";
+import packageCrudRouter from "@/api/v2/admin/packageCrud/packageCrud.routes";
+import addonRouter from "@/api/v2/admin/addon/addon.routes";
+import companyFeatureRouter from "@/api/v2/admin/companyFeature/companyFeature.routes";
+
+router.use("/features", featureRouter);
+router.use("/packages", packageCrudRouter);
+router.use("/addons", addonRouter);
+router.use("/companies", companyFeatureRouter); // /companies/:companyUuid/features
+```
+
+---
+
+## 8. Reference Pattern (จาก request module)
+
+โครงสร้างแบบ `src/modules/v1/employee/request/*`:
+
+- `request.interface.ts` — Zod schemas + TS types + enums สำหรับ module
+- `request.repository.ts` — DB operations เท่านั้น (Objection.js queries)
+- `request.service.ts` — business logic, orchestrate repositories
+- `request.controller.ts` (ใน api dir) — handle req/res, validate, call service, format response
+- `request.routes.ts` (ใน api dir) — Express Router with middleware chain
+- ไฟล์เสริมตาม responsibility: `leaveCalculation.service.ts`, `viewerStatus.util.ts` (สำหรับ logic เฉพาะ)
+
+**Pattern ที่ apply กับ feature management:**
+
+- `feature.interface.ts` — types + Zod schemas
+- `feature.repository.ts` — query
+- `feature.service.ts` — orchestration
+- `feature.adapter.ts` — response normalization (เช่น hide id, convert to camelCase)
+- ใน controller: ใช้ `res.success(data, 0, 'message')` + `handleError(res, error)` ตาม AI-RULES-BACKEND.md
+
+---
+
+## 9. Testing
+
+### Unit Tests
+
+- Service-level: mock repository, ทดสอบ logic
+  - `resolveCompanyEffectiveFeatureIdsService` — combine package/addon/override correctly
+  - `filterPermissionByMenuKeysService` — recursive walk ของ JSONB ถูกต้อง
+  - `createFeatureService` — validate menu_keys ที่ไม่มีใน PermissionDefault → reject
+  - `deleteFeatureService` — block เมื่อมี usage
+
+### Integration Tests
+
+- ใช้ test DB จริง (Knex migrations apply)
+- CRUD flow ครบ: create feature → create package → link features → create addon → link features → create company override → call resolver → ตรวจ effective
+- API e2e: super_admin token call CRUD endpoints → verify response shape
+
+### Regression Tests สำหรับ Phase 4
+
+- Test `getPermissionsController` กับ company ที่ feature ถูก disable → permission JSONB ตอบกลับไม่มี key นั้น
+- Test กับ company ที่ feature ถูก enable แต่ override `disabled` → ไม่มีเมนูนั้น
+- Test กับ company ที่มี addon → menu ที่ addon ปลด unlock ปรากฏ
