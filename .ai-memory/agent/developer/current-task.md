@@ -12,17 +12,21 @@ updated: 2026-05-06
 
 ## Active Task
 
-**Phase 3 CR Fix Wave** — fix 7 of 9 CR findings (H1+H2+M1+M2+M3+L2+L4); skip L1 (defer Phase 4 prep) + L3 (cosmetic). Done 2026-05-06.
+**Phase 4 Wave 3.5** — Audit Fix Wave: 4 fixes wiring resolver filter into endpoints F4.1 audit flagged
+- Fix 1: `getEmployeePermissionService` (`/auth/user-info` hot path) — filter PermissionDefault baseline + JSONB
+- Fix 2: `getCompPermissionByUuidController` — filter PermissionDefault baseline before deepMerge
+- Fix 3: `getCompPermissionDefaultListController` — accept optional `companyUuid` query param + filter
+- Fix 4: Owner case STRICT (Q-A) — covered transitively by Fix 1+2
 
-Source: `document/requirement/feature-management/cr-phase3.md`
+Source: `document/requirement/feature-management/f4-1-frontend-audit.md` + Lead-confirmed Q-A=STRICT, Q-B=companyUuid optional, Q-C=no migration
 
-(Wave 1 P3.7–P3.9 permissionResolver — done 2026-05-06; Wave 2 P3.1–P3.6 companyFeature backend — done 2026-05-06; Waves 3+4 frontend — done 2026-05-06; CR fix wave — done 2026-05-06)
+(Phase 3 — done 2026-05-06; Phase 3 CR Fix Wave — done 2026-05-06; Phase 4 W1 — done 2026-05-06; Phase 4 W2 — done 2026-05-06; Phase 4 W3 audit — done 2026-05-06)
 
 ---
 
 ## Active Track
 
-both (backend H1+M1+M2+M3+L4 first; frontend H2+L2 after)
+backend
 
 ---
 
@@ -118,6 +122,45 @@ both (backend H1+M1+M2+M3+L4 first; frontend H2+L2 after)
 | happywork-sale-cms/src/store/sagas/sale-dashboard-company-features.ts | 2026-05-06 | yes | CR-H2 — removed 3× `console.error` worker logs + `console.log` watcher banner; failure actions still dispatched |
 | happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx | 2026-05-06 | yes | CR-L2 — `wasSubmittingRef` + new `useEffect` auto-closes dialog when `togglingFeatureUuid` clears for `targetItem`; confirm handlers no longer close synchronously |
 | document/requirement/feature-management/checklist.md (Phase 3 CR Fix Wave) | 2026-05-06 | yes | Appended new section listing 7 fixed + 2 deferred items with rationale + verification log |
+| happywork-backend/src/modules/v1/externalAuth/permissions.service.ts | 2026-05-06 | yes | P4.2 — added resolver call with per-request ResolverCache; PERMISSION_DATA_NOT_FOUND → empty {} graceful fallback; other resolver errors propagate |
+| happywork-backend/src/modules/v1/externalAuth/permissions.interface.ts | 2026-05-06 | yes | P4.2 — added `permission: Record<string, unknown>` field with JSDoc explaining empty-fallback semantics |
+| happywork-backend/src/api/external/auth/permissions.controller.ts | 2026-05-06 | no | P4.1 — confirmed already has try/catch + handleError + res.success; no change required (response shape extends automatically via PermissionsResponse) |
+| happywork-backend/src/utils/errorMethods.ts | 2026-05-06 | no | CustomError shape: `code?: string \| number` — confirms `(error as {code?: string}).code` matches resolver's errorNotFound 'PERMISSION_DATA_NOT_FOUND' |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts | 2026-05-06 | no | Re-confirmed ResolverCache = Map<string, unknown>; PermissionJsonb = Record<string, unknown> — matched permission field type |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | no | Re-confirmed `resolveUserEffectivePermissionService(userUuid, cache?)` signature + error codes (PERMISSION_DATA_NOT_FOUND, PERMISSION_DATA_CORRUPTED) |
+| document/requirement/feature-management/checklist.md (P4.1-P4.2) | 2026-05-06 | yes | Ticked P4.1 + P4.2 + sub-items with controller-untouched rationale + edge-case fallback note |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts | 2026-05-06 | yes | Wave 2 P4.3+P4.4 — added resolver imports + `assertPermissionKeysWithinCompanyMenusService` helper; `createCompPermissionService` + `updateCompPermissionByUuidService` ทำ pre-validate (reject INVALID_MENU_KEY_FOR_COMPANY 400); `getCompPermissionByUuidService` filter `permission`+`permissionMobile` JSONB ผ่าน `filterPermissionByMenuKeysService`; CustomError code preservation in catch |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.repository.ts | 2026-05-06 | no | Confirmed `getCompPermissionList` repo selects `id, uuid, createdAt, updatedAt, statusType, description, name` only — NO `permission`/`permissionMobile` → list endpoint ไม่ต้อง filter; filter contract มี `companyId` (single-company assumption) |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.interface.ts | 2026-05-06 | no | `UpdateCompPermissionInterface` ไม่มี `companyId` field → service must lookup companyId via repo before validation; `CreateCompPermissionInterface` มี `companyId` พร้อม |
+| happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts | 2026-05-06 | no | Controller บน update path เรียก `getCompPermissionByUuidService` ก่อน update — Wave 2 service add JSONB filter to that response. ห้าม recursive call: `updateCompPermissionByUuidService` ใช้ `getCompPermissionByUuid` (repo, raw) ไม่ใช่ service. Controller `deepMerge(PermissionDefault, ...)` ทีหลัง — ดู Open Question ใน final report |
+| happywork-backend/src/database/postgresql/models/data/compPermission.ts | 2026-05-06 | no | `permission?: object` + `permissionMobile?: object` — Objection auto-deserializes JSONB → no JSON.parse needed |
+| happywork-backend/src/utils/helper.ts (deepMerge lines 175-235) | 2026-05-06 | no | deepMerge starts จาก `structuredClone(base)` — ทุก key ของ PermissionDefault ปรากฏใน result เสมอ; isOwner=true → bypasses override → controller deepMerge เป็น scope ของ frontend audit (F4.1) |
+| happywork-backend/src/constant/compPermission.ts (lines 270-324) | 2026-05-06 | no | Existing `collectLeafPaths` + `getAvailableMenuKeys()` — semantics ตรงกับ `extractMenuKeysFromPermissionJsonbService` ใหม่ (operates บน arbitrary JSONB tree); ใช้ ACTION_KEYS / NON_CHILD_KEYS แบบเดียวกันใน resolver (consistent leaf-detection rule) |
+| happywork-backend/src/utils/errorMethods.ts | 2026-05-06 | no (re-confirmed) | `errorBadRequest(msg, code, data)` รองรับ `data` field — ใช้ส่ง `invalidKeys` list ใน 400 response |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | yes | Wave 2 — added `extractMenuKeysFromPermissionJsonbService(jsonb)` (collect leaf paths) co-located กับ `filterPermissionByMenuKeysService` — ใช้ ACTION_KEYS/NON_CHILD_KEYS/hasActionKey เดียวกัน |
+| happywork-backend/src/modules/v1/externalAuth/permissions.service.ts | 2026-05-06 | no (re-confirmed) | Wave 1 reference pattern — per-request `new Map<string, unknown>()` cache + try/catch around resolver call → reused ใน compPermission service |
+| document/requirement/feature-management/checklist.md (P4.3-P4.4) | 2026-05-06 | yes | Ticked P4.3 + P4.4 + sub-items with path-correction note (P4.4 ทำที่ compPermission ไม่ใช่ compPermissionMapping) + single-company assumption note |
+| document/requirement/feature-management/f4-1-frontend-audit.md | 2026-05-06 | no | F4.1 audit report — 4 fixes spec: (1) getEmployeePermissionService filter baseline + JSONB; (2) getCompPermissionByUuidController filter PermissionDefault before deepMerge; (3) getCompPermissionDefaultListController accept companyUuid query; (4) Owner=STRICT covered transitively. Q-A=STRICT, Q-B=companyUuid optional, Q-C=no migration |
+| happywork-backend/src/modules/v1/admin/compPermissionMapping/compPermissionMapping.service.ts | 2026-05-06 | yes | W3.5 Fix 1 — getEmployeePermissionService filter PermissionDefault baseline (structuredClone + filterPermissionByMenuKeysService) ก่อน deepMerge; pick companyId จาก permission row; post-merge re-filter pass ใช้ allowedKeys ที่ resolved แล้ว (no resolver re-call); Q-A=STRICT enforced |
+| happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts | 2026-05-06 | yes | W3.5 Fix 2 — getCompPermissionByUuidController filter PermissionDefault + PermissionMobileDefault baseline ก่อน deepMerge (ใช้ rest.companyId จาก service); W3.5 Fix 3 — getCompPermissionDefaultListController รับ companyUuid query optional → getCompanyByUuidService → filter |
+| happywork-backend/src/schemas/compPermission.ts | 2026-05-06 | yes | W3.5 Fix 3 — getCompPermissionDefaultListSchema.query รับ companyUuid optional UUID (backward compat) |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts | 2026-05-06 | no (re-confirmed) | W3.5 confirmed: getCompPermissionByUuidService คืน companyId ใน rest (ใช้ใน controller filter); Wave 2 service-level filter ของ saved JSONB ยังคงทำงาน |
+| happywork-backend/src/modules/v1/admin/compPermissionMapping/compPermissionMapping.repository.ts | 2026-05-06 | no | getCompPermissionMappingByEmployeeId JOIN compPermission + select compPermission.* — return rows มี companyId field (ใช้ใน W3.5 Fix 1) |
+| happywork-backend/src/database/postgresql/models/data/compPermission.ts | 2026-05-06 | no (re-confirmed) | CompPermissionType มี companyId: string field — confirmed for W3.5 Fix 1 row.companyId access |
+| happywork-backend/src/modules/v1/admin/companies/companies.service.ts | 2026-05-06 | no | getCompanyByUuidService (line 144) — throws AppError 400 if not found; returns CompCompaniesType (with id field) — used in W3.5 Fix 3 |
+| happywork-backend/src/modules/v1/admin/companies/companies.repository.ts | 2026-05-06 | no | getCompanyByUUID returns full company row including id — used by getCompanyByUuidService |
+| happywork-backend/src/constant/compPermission.ts (PermissionDefault export) | 2026-05-06 | no (re-confirmed) | PermissionDefault + PermissionMobileDefault env-aware export (Prod/Dev variants); structurally Record<string, unknown> — cast as PermissionJsonb safe |
+| document/requirement/feature-management/cr-phase4.md | 2026-05-06 | no | CR Phase 4 report — verdict PASS-with-fixes; 7 findings (0/2/2/3); BLOCKED on H1+H2 — task source |
+| happywork-backend/src/api/v1/admin/compPermissionMapping/compPermissionMapping.controller.ts (lines 55-90, 170-195) | 2026-05-06 | no | Other callers of getCompPermissionByUuidService — read only `permission.id` + `permission.companyId`; no permission/permissionMobile usage → cache-share refactor doesn't affect them |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | no (re-confirmed) | Cache-key naming `menuKeys:{companyId}` reused across calls — confirms shared Map ทำให้ second call hits cache (H1 fix premise) |
+| happywork-backend/src/utils/errorMethods.ts | 2026-05-06 | no (re-confirmed) | CustomError `code: string \| number` field — confirms test assertion `toMatchObject({ code: 'PERMISSION_DATA_CORRUPTED' })` matches errorInternal output |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.interface.ts | 2026-05-06 | no (re-confirmed) | CreateCompPermissionInterface + UpdateCompPermissionInterface use `permission: object` — Record<string, unknown> assignable; L2 z.unknown swap is type-safe |
+| happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts | 2026-05-06 | yes | CR-H1 — getCompPermissionByUuidController สร้าง cache ตัวเดียว ส่งให้ service + reuse; CR-M2 — updateCompPermissionByUuidController ส่ง compPermission.companyId เข้า service |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts | 2026-05-06 | yes | CR-H1 — getCompPermissionByUuidService รับ optional cache?: ResolverCache param; CR-M1 — desiredKeys.length===0 early-return ก่อน resolver call; CR-M2 — updateCompPermissionByUuidService รับ optional existingCompanyId param skip internal lookup |
+| happywork-backend/src/modules/v1/externalAuth/permissions.service.ts | 2026-05-06 | yes | CR-L1 — เพิ่ม TODO comment ที่ logger.error level:'info' workaround (defer to Phase 5 logger refactor) |
+| happywork-backend/src/schemas/compPermission.ts | 2026-05-06 | yes | CR-L2 — z.record(z.string(), z.any()) → z.unknown() ทั้ง 6 spot (lines 14,15,37,38,137,138) |
+| happywork-backend/tests/unit/externalAuth/permissions.service.test.ts | 2026-05-06 | yes | CR-H2 — เพิ่ม jest.mock resolver + 2 new test cases (PERMISSION_DATA_NOT_FOUND graceful + PERMISSION_DATA_CORRUPTED propagate); 5/5 pass |
+| document/requirement/feature-management/checklist.md (Phase 4 CR Fix Wave) | 2026-05-06 | yes | Appended new section listing 6 fixed + 1 deferred (L3) with verification log + files modified |
 
 ---
 

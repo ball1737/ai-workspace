@@ -556,32 +556,138 @@ status: draft
 
 ### Backend — Update Existing Endpoints
 
-- [ ] **P4.1** อัพเดต `happywork-backend/src/api/external/auth/permissions.controller.ts`
-  - [ ] `getPermissionsController` → ใช้ `resolveUserEffectivePermissionService`
-- [ ] **P4.2** อัพเดต `happywork-backend/src/modules/v1/externalAuth/permissions.service.ts`
-  - [ ] `getPermissionsService` → load mapping → load comp_permission → filter ผ่าน resolver
-- [ ] **P4.3** อัพเดต `happywork-backend/src/modules/v1/admin/compPermission/*`
-  - [ ] List endpoint filter เมนูตาม company effective menus
-- [ ] **P4.4** อัพเดต `happywork-backend/src/modules/v1/admin/compPermissionMapping/*`
-  - [ ] Validate permission JSONB ที่ save ต้องไม่มี key นอกเหนือ enabled menus
+- [x] **P4.1** อัพเดต `happywork-backend/src/api/external/auth/permissions.controller.ts` <!-- done: 2026-05-06 -->
+  - [x] `getPermissionsController` — **left untouched** (Phase 2 layering: resolver call lives in service per `Service orchestrate repository` rule; controller stays thin with try/catch + `handleError` + `res.success`). Response shape extends automatically via `PermissionsResponse`. <!-- done: 2026-05-06 -->
+- [x] **P4.2** อัพเดต `happywork-backend/src/modules/v1/externalAuth/permissions.service.ts` <!-- done: 2026-05-06 -->
+  - [x] `getPermissionsService` — added `resolveUserEffectivePermissionService` call with per-request `ResolverCache` (`new Map()`); `PermissionsResponse` interface extended with `permission: Record<string, unknown>` field <!-- done: 2026-05-06 -->
+  - [x] Edge case `PERMISSION_DATA_NOT_FOUND` → caught + return `permission: {}` (graceful fallback, preserves prior un-assigned-user behavior); other resolver errors (`PERMISSION_DATA_CORRUPTED`, `COMPANY_NOT_FOUND`, `SEED_PACKAGE_NOT_FOUND`) propagate <!-- done: 2026-05-06 -->
+- [x] **P4.3** อัพเดต `happywork-backend/src/modules/v1/admin/compPermission/*` <!-- done: 2026-05-06 -->
+  - [x] `getCompPermissionByUuidService` — filter `permission` + `permissionMobile` JSONB ผ่าน `filterPermissionByMenuKeysService` ตาม company effective menus (resolve menu keys ผ่าน `resolveCompanyEffectiveMenuKeysService` พร้อม per-call `ResolverCache`) <!-- done: 2026-05-06 -->
+  - [x] `getCompPermissionListService` + `getCompPermissionByIdService` — **ไม่ต้องแก้** (existing repo `select(...)` ไม่ return `permission`/`permissionMobile` JSONB; list response shape ใช้แค่ `id, uuid, createdAt, updatedAt, statusType, name, description`) <!-- done: 2026-05-06 -->
+  - [x] Single-company assumption confirmed via `GetCompPermissionListInterface.filter.companyId` (controller derives จาก `req.user.companyId` หรือ `companyUuid` query) — ไม่ต้อง group-by <!-- done: 2026-05-06 -->
+- [x] **P4.4** อัพเดต `happywork-backend/src/modules/v1/admin/compPermission/*` (path correction — Wave 2 spec) <!-- done: 2026-05-06 -->
+  - [x] **Path correction:** P4.4 ทำที่ `compPermission` create/update services (ที่ save JSONB จริง) ไม่ใช่ `compPermissionMapping` (ซึ่งแค่ map employee→permissionId ไม่มี JSONB) <!-- done: 2026-05-06 -->
+  - [x] `createCompPermissionService` — pre-validate JSONB ผ่าน `assertPermissionKeysWithinCompanyMenusService` (collect leaf paths + intersect กับ company effective menus); reject 400 `INVALID_MENU_KEY_FOR_COMPANY` พร้อม `data.invalidKeys` list <!-- done: 2026-05-06 -->
+  - [x] `updateCompPermissionByUuidService` — same validation; companyId lookup via lightweight `getCompPermissionByUuid(uuid, ['id', 'companyId'])` (avoid recursive self-call to filter-applied `getCompPermissionByUuidService`); skip validation เมื่อ payload ไม่มี `permission` หรือ `permissionMobile` <!-- done: 2026-05-06 -->
+  - [x] Helper `extractMenuKeysFromPermissionJsonbService` ใหม่ใน `permissionResolver.service.ts` (co-located กับ `filterPermissionByMenuKeysService` — ใช้ leaf-detection logic ตัวเดียวกัน, ACTION_KEYS / NON_CHILD_KEYS / `hasActionKey`) <!-- done: 2026-05-06 -->
+  - [x] Empty `{}` JSONB → no-op (skip resolver call); both web + mobile JSONB validated; invalid keys deduped (Set) before throwing <!-- done: 2026-05-06 -->
+  - [x] Error preservation: AppError + CustomError (`INVALID_MENU_KEY_FOR_COMPANY` code) propagate ผ่าน try/catch โดยไม่ถูก wrap เป็น 500 <!-- done: 2026-05-06 -->
+
+## Phase 4 W3.5 — Audit Fix Wave (2026-05-06)
+
+> F4.1 audit (`document/requirement/feature-management/f4-1-frontend-audit.md`) เจอช่องว่างที่ Phase 4 W1+W2 ยังไม่ครอบคลุม:
+> Lead-confirmed decisions: **Q-A=STRICT** (owner ของ company ที่ feature ปิด → ไม่เห็น menu), **Q-B** (`/comp-permission/default` รับ `companyUuid` query param), **Q-C=No data migration** (per-read filter เท่านั้น).
+> Frontend ไม่ต้องแก้ (UI render จาก JSONB ตรงๆ — เมื่อ backend filter pre-merge แล้ว menu ปิดหายไปทันที).
+
+- [x] **W3.5.1 — Fix 1: `/auth/user-info` hot path** (`compPermissionMapping.service.ts:106` `getEmployeePermissionService`) <!-- done: 2026-05-06 -->
+  - [x] Resolve `companyId` จาก permission row (JOIN ของ `getCompPermissionMappingByEmployeeId` select `compPermission.*` ซึ่งมี `companyId`); pick first non-null <!-- done: 2026-05-06 -->
+  - [x] เรียก `resolveCompanyEffectiveMenuKeysService(companyId, cache)` (1 cache ต่อ call) → filter `PermissionDefault` + `PermissionMobileDefault` baseline ก่อน deepMerge <!-- done: 2026-05-06 -->
+  - [x] Post-deepMerge re-filter: `deepMerge` อาจ inject keys นอก allowed set กลับเข้ามาจาก role JSONB ที่ Q-C=no migration → second filter pass ใช้ `allowedKeys` ที่ resolved แล้ว (ไม่เรียก resolver ซ้ำ) <!-- done: 2026-05-06 -->
+  - [x] Q-A=STRICT enforced: `isOwner=true` ก็ใช้ baseline ที่ filter แล้ว (ไม่ bypass) — owner ไม่เห็น menu ของ feature ปิด <!-- done: 2026-05-06 -->
+  - [x] Edge case: `companyId` หาไม่เจอ (no permission row) → fallback ใช้ baseline เต็ม (ไม่ throw); resolver error (COMPANY_NOT_FOUND / SEED_PACKAGE_NOT_FOUND) → propagate per SSD §7 <!-- done: 2026-05-06 -->
+- [x] **W3.5.2 — Fix 2: `getCompPermissionByUuidController` deepMerge baseline filter** (`compPermission.controller.ts:147-148`) <!-- done: 2026-05-06 -->
+  - [x] Approach: filter `PermissionDefault` baseline ก่อน deepMerge ใน controller (touch ≤ ย้าย deepMerge เข้า service); cache สำหรับ web + mobile baseline ใช้ resolver call เดียว <!-- done: 2026-05-06 -->
+  - [x] Wave 2 service-level filter ของ saved JSONB ยังคงทำงาน — ผลลัพธ์รวมเป็น `deepMerge(filteredDefault, filteredPermission, isOwner)` ไม่มี leftover keys <!-- done: 2026-05-06 -->
+  - [x] Owner case: `deepMerge isOwner=true` bypass override per-leaf แต่ baseline filter แล้ว → owner = subset ของ company-enabled menus (parity กับ Fix 1) <!-- done: 2026-05-06 -->
+- [x] **W3.5.3 — Fix 3: `/comp-permission/default` filter by company** (`compPermission.controller.ts:111-127` `getCompPermissionDefaultListController`) <!-- done: 2026-05-06 -->
+  - [x] Zod schema update: `getCompPermissionDefaultListSchema.query` รับ `companyUuid` optional UUID (`schemas/compPermission.ts:26`) <!-- done: 2026-05-06 -->
+  - [x] Controller: ถ้ามี `companyUuid` → `getCompanyByUuidService(companyUuid)` (existing v1 service ที่ throw 400 ถ้าไม่พบ) → `resolveCompanyEffectiveMenuKeysService(company.id, cache)` → filter PermissionDefault + PermissionMobileDefault <!-- done: 2026-05-06 -->
+  - [x] Backward compat: ไม่มี `companyUuid` → คืน full baseline เหมือนเดิม (super-admin role-create UX) <!-- done: 2026-05-06 -->
+- [x] **W3.5.4 — Fix 4: Owner case STRICT enforcement** <!-- done: 2026-05-06 -->
+  - [x] No extra code — Fix 1 + Fix 2 baseline filter already enforces Q-A=STRICT (owner deepMerge bypass override per-leaf, but baseline เป็น filtered → owner = company-enabled subset) <!-- done: 2026-05-06 -->
+  - [x] Verify scenario "owner of company that disabled feature X" → menu X หายจาก runtime nav + role-edit table — รอ QA Wave 4 (P4.5+P4.6) <!-- done: 2026-05-06 -->
+- [x] **W3.5.5 — Verification** <!-- done: 2026-05-06 -->
+  - [x] TS compile clean: `NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit` exit 0 <!-- done: 2026-05-06 -->
+  - [x] Prettier conformant: 3 ไฟล์ unchanged after `prettier --write` (compPermissionMapping.service.ts, compPermission.controller.ts, schemas/compPermission.ts) <!-- done: 2026-05-06 -->
+  - [x] No `any` type introduced; explicit types via `PermissionJsonb` + `ResolverCache` <!-- done: 2026-05-06 -->
 
 ### Frontend — Permission Management UI
 
-- [ ] **F4.1** ตรวจสอบหน้า permission management เดิม (CMS)
-  - [ ] ถ้ามี hardcoded list of menus → ใช้ company effective menus จาก API ใหม่แทน
-  - [ ] (อาจไม่ต้องแก้ ถ้า UI render จาก permission JSONB ตรงๆ — ผ่าน filter จาก backend แล้ว)
+- [x] **F4.1** ตรวจสอบหน้า permission management เดิม (CMS) <!-- done: 2026-05-06 -->
+  - [x] Audit complete: `document/requirement/feature-management/f4-1-frontend-audit.md` <!-- done: 2026-05-06 -->
+  - [x] Verdict: Frontend ไม่ต้องแก้ — UI render จาก JSONB ตรงๆ; gap อยู่ที่ backend (4 endpoints ไม่ pre-filter ก่อน deepMerge) → fix ใน W3.5 below <!-- done: 2026-05-06 -->
+  - [x] `MENU_REGISTRY` (frontend) เป็น pure metadata (icon + i18n + route); iterate ตาม `userInfo.permission` keys ที่ backend ส่งมา → safe ทันทีเมื่อ backend filter pre-merge แล้ว <!-- done: 2026-05-06 -->
+  - [x] `mergePermissions(default, specific)` ใน `step-permission.tsx` safe เมื่อ `/comp-permission/default` filter ตาม company (W3.5 Fix 3) — ไม่ต้องแก้ frontend <!-- done: 2026-05-06 -->
 
 ### Tests & Regression
 
-- [ ] **P4.5** Integration test: end-to-end
-  - [ ] Toggle feature → re-fetch permission API → ผล filter ตรง
-  - [ ] Add addon → addon features ปรากฏใน effective
-  - [ ] Override disabled → feature ที่ package เปิด → ไม่ปรากฏ
-  - [ ] Remove override → กลับไปใช้ default จาก package
-- [ ] **P4.6** Regression test: existing permission users
-  - [ ] User ของ company ที่ไม่มี override → permission เหมือนเดิม
-  - [ ] รัน permission API ของ user ทั้งหมดในระบบ test → ไม่มี error
-- [ ] **F4.2** UAT: เปิด HappyWork app เป็น user ของ company ที่ feature ถูกปิด → เมนูที่เกี่ยวข้องไม่แสดง
+- [x] **P4.5** Integration test: end-to-end <!-- done: 2026-05-06 -->
+  - [x] Toggle feature → re-fetch permission API → ผล filter ตรง (IT-A — `permission-resolver.integration.spec.ts` `getEmployeePermissionService` group, asserts `payroll.runPayroll` filtered out when override disables it) <!-- done: 2026-05-06 -->
+  - [x] Add addon → addon features ปรากฏใน effective (IT-B — resolver returns expanded set incl. addon menu; assertion via `collectLeavesFromFiltered`) <!-- done: 2026-05-06 -->
+  - [x] Override disabled → feature ที่ package เปิด → ไม่ปรากฏ (IT-C — explicit override-disabled case) <!-- done: 2026-05-06 -->
+  - [x] Remove override → กลับไปใช้ default จาก package (IT-D — resolver returns full package menus → menu visible again) <!-- done: 2026-05-06 -->
+- [x] **P4.6** Regression test: existing permission users <!-- done: 2026-05-06 -->
+  - [x] User ของ company ที่ไม่มี override → permission เหมือนเดิม (IT-E — baseline allowed-keys path, `expect.arrayContaining(['dashboard','myHappywork.attendance','report.leaveReport'])`) <!-- done: 2026-05-06 -->
+  - [x] รัน permission API ของ user ทั้งหมดในระบบ test → ไม่มี error (IT-F shape sanity + W1 error propagation; PERMISSION_DATA_NOT_FOUND graceful, COMPANY_NOT_FOUND propagates) <!-- done: 2026-05-06 -->
+- [x] **F4.2** UAT: เปิด HappyWork app เป็น user ของ company ที่ feature ถูกปิด → เมนูที่เกี่ยวข้องไม่แสดง <!-- done: 2026-05-06 -->
+  - [x] **API-level UAT smoke** via integration test แทน UI (UI test รอ Playwright wave): IT-G owner Q-A=STRICT + IT-H non-owner parity ใน `getEmployeePermissionService`, IT-K admin role-edit (owner + non-owner parity) ใน `getCompPermissionByUuidService`, IT-I/J `/comp-permission/default` companyUuid filter <!-- done: 2026-05-06 -->
+  - [x] Additional W3.5 cases: IT-L P4.4 save-validation INVALID_MENU_KEY_FOR_COMPANY 400 reject + 4 supplementary cases (accept-when-valid, empty `{}` no-op, update reject, update without payload skip) <!-- done: 2026-05-06 -->
+
+### Wave 4 Results (2026-05-06 — QA)
+
+- **File:** `happywork-backend/tests/integration/sale-dashboard/permission-resolver.integration.spec.ts` (25 TCs)
+- **Run:** `NODE_OPTIONS="--max-old-space-size=8192" npx jest --testPathPattern="permission-resolver" --no-coverage` → 25 / 25 PASS in 9.58 s
+- **TS check:** `tsc --noEmit` exit 0 (full project)
+- **Prettier:** spec file conformant after `prettier --write`
+- **Sibling regression:** `companyFeature.integration.spec.ts` re-run 17 / 17 PASS (no cross-spec mock leakage)
+- **Defects found:** 1 minor (DEF-001 — pre-existing stale unit `tests/unit/externalAuth/permissions.service.test.ts` doesn't include `permission` field added in P4.2; not a Wave 4 regression, see `testcase.md` §7)
+
+---
+
+## Phase 4 CR Fix Wave (2026-05-06)
+
+> Source: `document/requirement/feature-management/cr-phase4.md` — verdict PASS-with-fixes (0 critical / 2 high / 2 medium / 3 low). BLOCKED on H1+H2.
+> Approach: ทำ 6 จาก 7 findings; skip L3 (test code style — 25/25 ยัง pass). หลัง fix ครบ → ready for BA.
+
+### CR Fixes (6 ticked + 1 deferred)
+
+- [x] **CR-H1** Double resolver call ใน `getCompPermissionByUuidController` <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม optional `cache?: ResolverCache` parameter ที่ `getCompPermissionByUuidService` (`happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts`) — ถ้า caller ไม่ส่ง → service สร้างใหม่ (backward compat ของ caller อื่น)
+  - [x] Controller (`happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts:getCompPermissionByUuidController`) สร้าง `cache` ตัวเดียว ส่งให้ service + reuse กับ `resolveCompanyEffectiveMenuKeysService` ที่ baseline filter ก่อน deepMerge
+  - [x] ผลลัพธ์: resolver call เหลือ 1 ครั้งต่อ request (cache hit ครั้งที่ 2 ผ่าน `menuKeys:{companyId}` key)
+  - [x] Verify other callers (`compPermissionMapping.controller.ts:64,178`) ไม่กระทบ — เรียก `getCompPermissionByUuidService(uuid)` ไม่ส่ง cache → fallback path ทำงานเหมือนเดิม
+- [x] **CR-H2** DEF-001 — stale unit test `tests/unit/externalAuth/permissions.service.test.ts` <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `jest.mock('@/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service')` + mock `resolveUserEffectivePermissionService`
+  - [x] Update happy-path tests assert `{ userUuid, isAdmin, permission }` (3 fields) + `mockedResolvePermission` called with `(userUuid, expect.any(Map))`
+  - [x] เพิ่ม test case ใหม่: `PERMISSION_DATA_NOT_FOUND` → returns empty `{}` graceful fallback
+  - [x] เพิ่ม test case ใหม่: `PERMISSION_DATA_CORRUPTED` → propagates (assert via `code: 'PERMISSION_DATA_CORRUPTED'`)
+  - [x] 404 case ยัง pass + assert resolver `not.toHaveBeenCalled()`
+  - [x] 5/5 tests pass (เดิม 3 → 5) — `permissions.service.ts` coverage = 100/100/100/100
+- [x] **CR-M1** Unnecessary resolver call for `{}` JSONB <!-- done: 2026-05-06 -->
+  - [x] ย้าย `desiredKeys.length === 0 → return` ขึ้นมา BEFORE `resolveCompanyEffectiveMenuKeysService` ใน `assertPermissionKeysWithinCompanyMenusService` (`happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts`)
+  - [x] ผลลัพธ์: save permission ที่ payload เป็น `{}` ทั้ง web+mobile → 0 DB queries (เดิม 4-5 queries แล้วทิ้ง)
+- [x] **CR-M2** Double DB read ใน `updateCompPermissionByUuidController` <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม optional `existingCompanyId?: string` param ที่ `updateCompPermissionByUuidService` — ถ้ามี → skip internal `getCompPermissionByUuid` lookup ใน P4.4 validation
+  - [x] Controller ส่ง `compPermission.companyId` (ที่ได้จาก `getCompPermissionByUuidService` ตอนต้น flow) เข้า service → 1 lookup ต่อ request (เดิม 2)
+  - [x] Backward compat: caller อื่นไม่กระทบ (param เป็น optional, default fallback ทำงานเดิม)
+- [x] **CR-L1** `logger.error` with `level: 'info'` workaround <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `// TODO: switch to logger.info when the diagnostic logger gains an info level (Phase 5 prep)` comment ที่ `permissions.service.ts:46` (option a — minimal change ตามที่ task spec ระบุ)
+- [x] **CR-L2** `z.any()` violates no-`any` rule <!-- done: 2026-05-06 -->
+  - [x] Replace `z.record(z.string(), z.any())` → `z.record(z.string(), z.unknown())` ที่ `happywork-backend/src/schemas/compPermission.ts` (6 occurrences: lines 14, 15, 37, 38, 137, 138)
+  - [x] Downstream interface (`CreateCompPermissionInterface.permission: object` / `UpdateCompPermissionInterface.permission: object`) compatible — `Record<string, unknown>` ⊂ `object`
+- [ ] **CR-L3** _DEFERRED_ — Test `IT-J` inline logic refactor (cosmetic, all 25 tests still pass; tracked for Phase 5 prep)
+
+### Verification
+
+- **Grep verification (post-fix):**
+  - H1: `getCompPermissionByUuidService = async (uuid: string, cache?: ResolverCache)` confirmed; controller pass `cache` to single service call
+  - H2: test file imports `resolveUserEffectivePermissionService` + `jest.mock(...)` registered; 5 tests pass
+  - M1: `desiredKeys.length === 0 → return` ขึ้นก่อน `resolveCompanyEffectiveMenuKeysService` (line 59 vs 61 in service)
+  - M2: `updateCompPermissionByUuidService(uuid, data, existingCompanyId?)` signature confirmed; controller passes `compPermission.companyId`
+- **TS compile:** `NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit` exit 0 (full project)
+- **Prettier:** 5 modified files conformant (`prettier --write` reports unchanged)
+- **Tests after fix:**
+  - `tests/unit/externalAuth/permissions.service.test.ts` — 5/5 PASS (เพิ่ม 2 test cases)
+  - `tests/integration/sale-dashboard/permission-resolver.integration.spec.ts` — 25/25 PASS (no regression)
+  - `tests/integration/sale-dashboard/companyFeature.integration.spec.ts` — 17/17 PASS (no regression)
+
+### Files modified (5)
+
+- `happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts` — H1 cache share + M2 pass companyId
+- `happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts` — H1 optional cache param + M1 early-return + M2 optional existingCompanyId param
+- `happywork-backend/src/modules/v1/externalAuth/permissions.service.ts` — L1 TODO comment
+- `happywork-backend/src/schemas/compPermission.ts` — L2 z.any → z.unknown (6 spots)
+- `happywork-backend/tests/unit/externalAuth/permissions.service.test.ts` — H2 mock resolver + 2 new test cases
 
 ---
 

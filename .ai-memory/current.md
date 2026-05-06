@@ -11,7 +11,7 @@
 
 **Type:** long-term
 
-**Status:** Phase 3 **COMPLETE** — BA verdict PASS-with-notes (0 critical, 3 non-critical: L1 logger.warn defer Phase 4, L3 cosmetic, F3.11 manual UAT). Pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`2bf92292`) + hw-sale-cms (`b76fb1e`) (2026-05-06). **Features UI relocated** 2026-05-06: ย้าย `<CompanyFeaturesTabView>` จาก `/dashboard/client-management/[uuid]` (deprecated path) → embed ใน `/dashboard/package-config?from=customer&companyId={UUID}` แทน legacy config-feature section ภายใต้ flag `USE_LEGACY_CONFIG_FEATURE=false` (revert ได้); commit `eabc560`. Pending Phase 4 dispatch (Resolver Integration + Regression).
+**Status:** Phase 4 **COMPLETE** — BA verdict PASS-with-notes (0 critical / 3 non-critical defer-able). Pushed to `origin/ball/feature/feature-management` hw-be (`bffc2dbf`) (2026-05-06). Phase 3 closed earlier same day (hw-be `2bf92292`/`07ea4edc`/`8c07ef3e` + hw-sale-cms `b76fb1e`/`eabc560`). Pending Phase 5 (Cleanup — drop legacy v1 featureManagement etc.) — แยก scope, ทำหลัง deploy stable.
 
 **Started:** 2026-05-04
 
@@ -108,7 +108,24 @@ Wave breakdown:
 - Detail views ไม่แก้ — ไม่ส่ง `?from` → branch ทำงานถูกต้อง (back → detail)
 - EBN.1-EBN.8 ticked ใน checklist.md; TS pass + prettier conformant
 
-**Currently:** Phase 3 closeout complete (2026-05-06):
+**Currently:** Phase 4 closeout complete (2026-05-06):
+- ✅ W1 (P4.1+P4.2): `/api/external/auth/permissions/:uuid` — getPermissionsService filter via resolver; added `permission` field; graceful empty fallback
+- ✅ W2 (P4.3+P4.4): `compPermission` admin — list/byId/create/update filter + save validation `INVALID_MENU_KEY_FOR_COMPANY` 400
+- ✅ W3 (F4.1): Frontend audit — เจอ 4 endpoints ที่ Phase 4 W1+W2 ยังไม่ filter; report at `f4-1-frontend-audit.md`
+- ✅ W3.5 (Audit Fix): 4 fixes — Fix 1 `/auth/user-info` (`getEmployeePermissionService`); Fix 2 `getCompPermissionByUuidController` deepMerge baseline filter; Fix 3 `/comp-permission/default?companyUuid=` filter; Fix 4 owner STRICT transitively
+- ✅ User decisions (Q-A=STRICT owner / Q-B=companyUuid optional / Q-C=no-migration)
+- ✅ W4 (P4.5+P4.6+F4.2): 25/25 integration tests PASS
+- ✅ CR pass: PASS-with-fixes (0 crit / 2H / 2M / 3L) → CR Fix Wave 6/7 (skip L3 cosmetic test refactor); H1 cache sharing avoids 4-5 DB queries × 2; H2 unit test sync; M1 early-return before resolver
+- ✅ BA verdict PASS-with-notes (0 crit / 3 non-crit deferred)
+- ✅ Pushed: hw-be `bffc2dbf` → `origin/ball/feature/feature-management`
+- 🟡 Outstanding (defer post-deploy):
+  - F4.2 manual UAT จริง (E2E with Playwright) — defer to E2E framework setup
+  - L3 test inline logic refactor — Phase 5 prep
+  - L1 logger.warn refactor — Phase 5 prep
+
+---
+
+## Previous: Phase 3 closeout complete (2026-05-06):
 - ✅ Implementation 4 waves: W1 permissionResolver (BE) → W2 companyFeature (BE) → W3 Redux slice (FE) → W4 Page D Features Tab (FE)
 - ✅ Q9=A (sale-dashboard router pattern) consistent ทั้ง phase; URL `/api/v2/sale-dashboard/companies/:companyUuid/features`
 - ✅ Resolver reuse 100% (W2 imports 5 functions จาก W1, no duplicate logic)
