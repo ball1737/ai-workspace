@@ -11,7 +11,7 @@
 
 **Type:** long-term
 
-**Status:** Phase 2 **COMPLETE** — BA validation PASS-with-notes (0 critical, 5 non-critical doc-drift), pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`20eca15f`) + hw-sale-cms (`0734f7a`) (2026-05-06). Doc drift cleaned + effectiveMenus contract fix shipped. Pending Phase 3 dispatch.
+**Status:** Phase 3 **COMPLETE** — BA verdict PASS-with-notes (0 critical, 3 non-critical: L1 logger.warn defer Phase 4, L3 cosmetic, F3.11 manual UAT). Pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`2bf92292`) + hw-sale-cms (`b76fb1e`) (2026-05-06). Pending Phase 4 dispatch (Resolver Integration + Regression).
 
 **Started:** 2026-05-04
 
@@ -108,15 +108,19 @@ Wave breakdown:
 - Detail views ไม่แก้ — ไม่ส่ง `?from` → branch ทำงานถูกต้อง (back → detail)
 - EBN.1-EBN.8 ticked ใน checklist.md; TS pass + prettier conformant
 
-**Currently:** Phase 2 closeout complete (2026-05-06):
-- ✅ BA validation done — Verdict **PASS-with-notes** (0 critical / 5 non-critical doc-drift); report at `document/requirement/feature-management/ba-validation-phase2.md`
-- ✅ Phase 2 commits already on origin verified (hw-be `20eca15f` + hw-sale-cms `f61b70d`); 0/0 ahead/behind
-- ✅ Doc drift fixes — checklist.md P2.1+P2.2 ticked; P2.3-P2.21 paths synced `v2/admin` → `v2/sale-dashboard`; JSDoc in 3 service files synced
-- ✅ Sale-cms contract fix discovered + pushed — 2 commits `b21eaaf` (effectiveMenus `menus` → `menuKeys` to match backend `Promise<readonly string[]>`) + `0734f7a` (JSDoc URL drift) → `origin/ball/feature/feature-management`
-- 🟡 Outstanding (non-blocker, defer to Phase 3 prep):
-  - P2.25 integration test — written 19 TCs, OOM blocked local, ต้องรันบน CI (`--max-old-space-size=4096`)
-  - F2.35 manual UAT — pending; รัน post-deploy
-  - UT-6 / UT-7 / UT-8 standalone spec files — covered indirectly, defer Phase 3
+**Currently:** Phase 3 closeout complete (2026-05-06):
+- ✅ Implementation 4 waves: W1 permissionResolver (BE) → W2 companyFeature (BE) → W3 Redux slice (FE) → W4 Page D Features Tab (FE)
+- ✅ Q9=A (sale-dashboard router pattern) consistent ทั้ง phase; URL `/api/v2/sale-dashboard/companies/:companyUuid/features`
+- ✅ Resolver reuse 100% (W2 imports 5 functions จาก W1, no duplicate logic)
+- ✅ CR pass: PASS-with-fixes (0 crit / 2H / 3M / 4L) → CR Fix Wave 7/9 addressed (skip L1 defer Phase 4 logger.warn refactor, L3 cosmetic)
+- ✅ QA pass: 75/75 tests PASS — companyFeature 26 + permissionResolver 32 + integration 17
+- ✅ DEF-001 (QA finding) verified false positive — errorHandler ทำงานถูก (CustomError มี .status passes isHttpException)
+- ✅ BA verdict PASS-with-notes (0 critical / 3 non-critical N1 logger N2 EMPTY_COUNTS N3 manual UAT pending)
+- ✅ Pushed: hw-be `2bf92292` + hw-sale-cms `b76fb1e` → `origin/ball/feature/feature-management`
+- 🟡 Outstanding (non-blocker, defer to Phase 4 / post-deploy):
+  - F3.11 manual UAT — pending; รัน post-deploy
+  - L1 logger.warn refactor — defer Phase 4 prep (impacts diagnostic module)
+  - P2.25 integration test (Phase 2 leftover) — still OOM blocked local, ต้องรันบน CI
 
 ---
 
@@ -134,6 +138,16 @@ _(จะถูกอัพเดตอัตโนมัติโดย Lead เ
 
 | Date       | Agent     | Action                                                                                                |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-05-06 | Lead      | Phase 3 closeout — pushed hw-be `2bf92292` + hw-sale-cms `b76fb1e`; BA PASS-with-notes; 75/75 tests PASS |
+| 2026-05-06 | BA        | BA validation Phase 3 — PASS-with-notes (0 crit / 3 non-crit); FR-4/FR-5 ครบ, Q3+Q4+Q9 verified, CR fixes verified, DEF-001 closed false-positive |
+| 2026-05-06 | QA        | Phase 3 tests — 75/75 PASS (companyFeature 26 + permissionResolver 32 + integration 17); flagged DEF-001 (later verified false-positive) |
+| 2026-05-06 | Developer | Phase 3 CR Fix Wave — 7 fixes (H1+H2+M1+M2+M3+L2+L4); L1+L3 deferred |
+| 2026-05-06 | Code Reviewer | Phase 3 CR — verdict PASS-with-fixes (0 crit / 2H / 3M / 4L); BLOCKED until H1+H2 |
+| 2026-05-06 | Developer | Phase 3 W4 done — Page D Features Tab (5 components + i18n 37 keys + tab integration) |
+| 2026-05-06 | Developer | Phase 3 W3 done — Redux slice sale-dashboard-company-features (5 created + 5 register edits) |
+| 2026-05-06 | Developer | Phase 3 W2 done — companyFeature module mounted /api/v2/sale-dashboard/companies/:companyUuid/features |
+| 2026-05-06 | Developer | Phase 3 W1 done — permissionResolver foundation (interface+repo+service); in-request cache Option C |
+| 2026-05-06 | Lead      | Q9=A decision — Phase 3 ใช้ sale-dashboard router pattern ตาม Phase 2 precedent |
 | 2026-05-06 | Lead      | Phase 2 closeout — sale-cms contract fix (effectiveMenus menus→menuKeys) + JSDoc drift; 2 commits pushed `b21eaaf`+`0734f7a`; checklist + memory updated |
 | 2026-05-06 | Lead      | Doc drift fix — P2.1+P2.2 ticked, P2.3-P2.21 paths synced v2/admin→v2/sale-dashboard, JSDoc 3 service files synced |
 | 2026-05-06 | BA        | BA validation Phase 2 — Verdict PASS-with-notes (0 critical, 5 non-critical); FR/middleware/URL/enum/Q6-Q8/CR all verified; report file written |

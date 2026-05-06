@@ -2,7 +2,7 @@
 feature: feature-management
 type: feature-checklist
 created: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-06
 owner: Lead (orchestration), all agents (per-task)
 status: draft
 ---
@@ -437,58 +437,118 @@ status: draft
 
 ### Backend — Company Feature Module
 
-- [ ] **P3.1** สร้าง `happywork-backend/src/modules/v2/admin/companyFeature/companyFeature.interface.ts`
-- [ ] **P3.2** สร้าง `companyFeature.repository.ts`
-  - [ ] `getOverridesByCompanyRepository(companyId)`
-  - [ ] `upsertOverrideRepository(companyId, featureId, status, reason, createdBy)`
-  - [ ] `removeOverrideRepository(companyId, featureId)`
-  - [ ] `getCompanyAddonsRepository(companyId)`
-- [ ] **P3.3** สร้าง `companyFeature.service.ts`
-  - [ ] `getCompanyFeaturesService(companyUuid)` — list with effective + source ของแต่ละ feature
-  - [ ] `setCompanyFeatureOverrideService(companyUuid, featureUuid, enabled, reason, actor)`
-  - [ ] `removeCompanyFeatureOverrideService(companyUuid, featureUuid, actor)`
-- [ ] **P3.4** สร้าง `companyFeature.adapter.ts`
-- [ ] **P3.5** สร้าง `src/api/v2/admin/companyFeature/companyFeature.controller.ts`
-- [ ] **P3.6** สร้าง `companyFeature.routes.ts` + register
+> Path sync (Q9=A, 2026-05-06): ใช้ `src/modules/v2/sale-dashboard/companyFeature/` + `src/api/v2/sale-dashboard/companyFeature/` (ตาม Move-to-SaleDashboard precedent ของ Phase 2). URL = `/api/v2/sale-dashboard/companies/:companyUuid/features[/:featureUuid]`. SSD §1.4 + §4.4 ที่ยังเขียน `/v2/companies/...` = stale ที่ Lead จะ batch update ทีหลัง
+
+- [x] **P3.1** สร้าง `happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.interface.ts` — Zod schemas (get/set/remove) + types `CompanyFeatureItem`, `OverrideRowDb`, `OverrideStatusType`, `CompanyFeatureSource` <!-- done: 2026-05-06 -->
+- [x] **P3.2** สร้าง `companyFeature.repository.ts` <!-- done: 2026-05-06 -->
+  - [x] `getCompanyByUuidRepository(companyUuid)` — lookup id + packageId <!-- done: 2026-05-06 -->
+  - [x] `listActiveFeaturesRepository()` — Q4=B base list (status_type='active' only, ordered) <!-- done: 2026-05-06 -->
+  - [x] `getFeatureByUuidForOverrideRepository(featureUuid)` — return id + uuid + statusType, service block on inactive <!-- done: 2026-05-06 -->
+  - [x] `getOverridesByCompanyRepository(companyId)` — JOIN comp_features filter status_type='active' (Q4=B) <!-- done: 2026-05-06 -->
+  - [x] `upsertOverrideRepository(companyId, featureId, status, reason, actorBy)` — PostgreSQL ON CONFLICT (company_id, feature_id) DO UPDATE; status_type→'active' <!-- done: 2026-05-06 -->
+  - [x] `removeOverrideRepository(companyId, featureId)` — hard delete + return {removed} <!-- done: 2026-05-06 -->
+  - [x] `getCompanyAddonsRepository(companyId)` — **N/A** (reuse `getActiveCompanyAddonIdsRepository` + `getAddonFeatureIdsRepository` จาก permissionResolver — ห้าม duplicate logic) <!-- done: 2026-05-06 -->
+- [x] **P3.3** สร้าง `companyFeature.service.ts` <!-- done: 2026-05-06 -->
+  - [x] `getCompanyFeaturesService(companyUuid)` — list active features with effective + source; pre-fetch + Promise.all 4 batch queries (resolver repos + listActiveFeatures + getOverrides) <!-- done: 2026-05-06 -->
+  - [x] `setCompanyFeatureOverrideService(companyUuid, featureUuid, enabled, reason, actor)` — UPSERT + race handling (PG 23505/40001/40P01 → 409 CONCURRENT_OVERRIDE per SSD §7); blocks Q4=B inactive feature <!-- done: 2026-05-06 -->
+  - [x] `removeCompanyFeatureOverrideService(companyUuid, featureUuid, actor)` — hard delete; idempotent (no-op log if not found); blocks Q4=B inactive feature <!-- done: 2026-05-06 -->
+  - [x] Reuse permissionResolver: `getCompanyPackageIdRepository`, `getSeedPackageIdRepository`, `getPackageFeatureIdsRepository`, `getActiveCompanyAddonIdsRepository`, `getAddonFeatureIdsRepository` (no duplicate) <!-- done: 2026-05-06 -->
+- [x] **P3.4** สร้าง `companyFeature.adapter.ts` — pure `computeCompanyFeatureItem` + `toCompanyFeatureItems` (source priority: override > package > addon > default-disabled per backend.md §2.4) <!-- done: 2026-05-06 -->
+- [x] **P3.5** สร้าง `src/api/v2/sale-dashboard/companyFeature/companyFeature.controller.ts` — 3 controllers wrap services; res.success / handleError pattern; resolveActorUuid from req.user <!-- done: 2026-05-06 -->
+- [x] **P3.6** สร้าง `companyFeature.routes.ts` + register <!-- done: 2026-05-06 -->
+  - [x] basePath `/api/v2/sale-dashboard/companies`; tags `Company Features - V2 Sale Dashboard` <!-- done: 2026-05-06 -->
+  - [x] Middleware chain: `validateSaleDashboardAccessToken` → `requireSuperAdmin` → `validateRequest` <!-- done: 2026-05-06 -->
+  - [x] Routes: GET `/:companyUuid/features`, PUT/DELETE `/:companyUuid/features/:featureUuid` (specific paths registered first per Express greedy match) <!-- done: 2026-05-06 -->
+  - [x] Mounted ใน `sale-dashboard.routes.ts` ที่ `/companies` segment <!-- done: 2026-05-06 -->
+  - [x] TS pass + prettier conformant <!-- done: 2026-05-06 -->
+  - [x] Frontend equivalent path: `/api/v2/sale-dashboard/companies/:companyUuid/features/...` (Wave 3 จะใช้) <!-- done: 2026-05-06 -->
 
 ### Backend — Permission Resolver Module
 
-- [ ] **P3.7** สร้าง `happywork-backend/src/modules/v2/admin/permissionResolver/permissionResolver.interface.ts`
-- [ ] **P3.8** สร้าง `permissionResolver.repository.ts`
-  - [ ] `getPackageFeaturesRepository(packageId)`
-  - [ ] `getAddonFeaturesRepository(addonIds[])`
-  - [ ] `getOverridesRepository(companyId)`
-- [ ] **P3.9** สร้าง `permissionResolver.service.ts`
-  - [ ] `resolveCompanyEffectiveFeatureIdsService(companyId)`
-  - [ ] `resolveCompanyEffectiveMenuKeysService(companyId)`
-  - [ ] `filterPermissionByMenuKeysService(jsonb, allowedKeys)`
-  - [ ] `resolveUserEffectivePermissionService(userUuid)`
-  - [ ] In-request memoization (cache per request)
+> Path sync (Q9=A, 2026-05-06): ใช้ `src/modules/v2/sale-dashboard/permissionResolver/` แทน `v2/admin/...` (ตาม Move-to-SaleDashboard precedent ของ Phase 2). SSD §1.4 + §7 ที่ยังเขียน `/v2/admin/...` = stale ที่ Lead จะ batch update ทีหลัง
+
+- [x] **P3.7** สร้าง `happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts` <!-- done: 2026-05-06 -->
+- [x] **P3.8** สร้าง `permissionResolver.repository.ts` <!-- done: 2026-05-06 -->
+  - [x] `getPackageFeatureIdsRepository(packageId)` — JOIN comp_package_features ↔ comp_features filter status_type='active' <!-- done: 2026-05-06 -->
+  - [x] `getActiveCompanyAddonIdsRepository(companyId)` — Q3=A runtime expiry filter (`expires_at IS NULL OR expires_at > NOW()`) <!-- done: 2026-05-06 -->
+  - [x] `getAddonFeatureIdsRepository(addonIds[])` — batch WHERE IN + DISTINCT + filter feature.status_type='active' <!-- done: 2026-05-06 -->
+  - [x] `getCompanyOverridesRepository(companyId)` — JOIN comp_company_features ↔ comp_features (Q4=B: filter feature.status_type='active') <!-- done: 2026-05-06 -->
+  - [x] `getFeatureMenuKeysRepository(featureIds[])` — batch WHERE IN + LATERAL jsonb_array_elements_text (DB-level unnest) <!-- done: 2026-05-06 -->
+  - [x] `getCompanyPackageIdRepository(companyId)` + `getSeedPackageIdRepository()` — Seed fallback support <!-- done: 2026-05-06 -->
+  - [x] `getUserPermissionJsonbRepository(userUuid)` — employee → comp_permission_mapping → comp_permission (Phase 4 prep) <!-- done: 2026-05-06 -->
+- [x] **P3.9** สร้าง `permissionResolver.service.ts` <!-- done: 2026-05-06 -->
+  - [x] `resolveCompanyEffectiveFeatureIdsService(companyId, cache?)` — Seed fallback + log "warn" (via `logger.error` + `level:'warn'` since `logger.warn` not exposed) <!-- done: 2026-05-06 -->
+  - [x] `resolveCompanyEffectiveMenuKeysService(companyId, cache?)` — reuse feature ids resolver via cache <!-- done: 2026-05-06 -->
+  - [x] `filterPermissionByMenuKeysService(jsonb, allowedKeys)` — pure recursive walker, leaf detection via `hasActionKey` ตาม PermissionDefault shape <!-- done: 2026-05-06 -->
+  - [x] `resolveUserEffectivePermissionService(userUuid, cache?)` — throws `PERMISSION_DATA_NOT_FOUND` (404) / `PERMISSION_DATA_CORRUPTED` (500) ตาม SSD §7 <!-- done: 2026-05-06 -->
+  - [x] In-request memoization — Option C: explicit `cache?: Map<string, unknown>` param (no Express coupling, testable) <!-- done: 2026-05-06 -->
 
 ### Backend — Tests
 
-- [ ] **P3.10** Unit test: companyFeature.service.spec.ts
-- [ ] **P3.11** Unit test: permissionResolver.service.spec.ts (delta logic, addon union, override)
-- [ ] **P3.12** Integration test: end-to-end resolver flow
+- [x] **P3.10** Unit test: companyFeature.service.test.ts <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/tests/unit/modules/v2/sale-dashboard/companyFeature/companyFeature.service.test.ts`
+  - 26 cases: 11 (getCompanyFeaturesService TC-1..TC-11) + 11 (setCompanyFeatureOverrideService TC-12..TC-19b) + 4 (removeCompanyFeatureOverrideService TC-20..TC-23). PASS 26/26.
+- [x] **P3.11** Unit test: permissionResolver.service.test.ts (delta logic, addon union, override) <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/tests/unit/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.test.ts`
+  - 32 cases: resolveEffectivePackageId (5) + resolveCompanyEffectiveFeatureIds TC-1..TC-9+1 (10) + resolveCompanyEffectiveMenuKeys TC-10..TC-13+1 (5) + filterPermissionByMenuKeys TC-14..TC-20+1 (8) + resolveUserEffectivePermission TC-21..TC-23+1 (4). PASS 32/32.
+- [x] **P3.12** Integration test: end-to-end resolver flow <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/tests/integration/sale-dashboard/companyFeature.integration.spec.ts`
+  - 17 cases: GET (4) + PUT (8 — IT-2/5/6/7/8 + propagation) + DELETE (3) + IT-4 round-trip + sanity (1). PASS 17/17 บน local (Mac) ด้วย `NODE_OPTIONS="--max-old-space-size=8192"`.
+  - Total Phase 3 unit + integration = **75/75 PASS** (Time 13.4s).
+  - Note: errorHandler limitation surfaced — `errorMethods.errorXxx()` (CustomError with `.status` field) ไม่ตรง `isHttpException` (`.status` check vs AppError `.statusCode`). ใน prod path, errors จาก service จะ fallback เป็น HTTP 500 ทุกตัว (response.code ยัง surface ผ่าน `error.code` แต่ HTTP status 500). Integration test จึง throw `AppError` จาก mocked services เพื่อสะท้อนสิ่งที่ middleware รองรับ. **Recommendation**: SA/Lead ตัดสินใจ — ถ้าต้องการ HTTP status ตรงกับ errorMethods status ต้องแก้ `errorHandlers.middleware.ts` `isHttpException` ให้ check `'status' in err` หรือ migrate ทุก service throw → AppError. (ตอนนี้ระบบ controller test = pass แต่ user-facing error UX ยังเป็น 500 ทุก domain error → ต้องตามต่อใน follow-up CR)
 
 ### Frontend — Redux Slice (Company Features)
 
-- [ ] **F3.1** สร้าง `src/types/store/sale-dashboard-company-features.ts`
-- [ ] **F3.2** สร้าง `src/store/services/company-features-request.ts`
-- [ ] **F3.3** สร้าง action/reducer/saga + register
-- [ ] **F3.4** สร้าง hook `useSaleDashboardCompanyFeatures`
+> Slice naming Q11=A: `sale-dashboard-company-features` (kebab plural, not `-management` suffix). Reasons: (1) frontend.md §3 lines 112+125 already spec this name; (2) Phase 2 used `-management` because those slices back master-data CRUD pages, but Wave 3 backs a tab inside an existing client detail page — not a management page; (3) URL itself is plural (`/companies/:uuid/features`).
+
+- [x] **F3.1** สร้าง `src/types/store/sale-dashboard-company-features.ts` <!-- done: 2026-05-06 -->
+  - [x] `CompanyFeatureSource` union ตรง SSD §3.3 (5 variants); `CompanyFeatureItem` (featureUuid, featureCode, name multilingual, enabled, source, overrideReason?) <!-- done: 2026-05-06 -->
+  - [x] Request payloads: `GetCompanyFeaturesParams`, `SetCompanyFeatureOverridePayload`, `RemoveCompanyFeatureOverridePayload` <!-- done: 2026-05-06 -->
+  - [x] Response payloads: `GetCompanyFeaturesResponse = {list}`, set/remove return single `CompanyFeatureItem` <!-- done: 2026-05-06 -->
+  - [x] `Root` state: list + isListLoading + listError + togglingFeatureUuid + toggleError (per-row toggling lock) <!-- done: 2026-05-06 -->
+  - [x] Registered ใน `src/types/store/index.ts` (slot key `saleDashboardCompanyFeatures` — verified no collision via grep) <!-- done: 2026-05-06 -->
+- [x] **F3.2** สร้าง `src/store/services/company-features-request.ts` <!-- done: 2026-05-06 -->
+  - [x] `sdGetCompanyFeaturesRequest(companyUuid)` → GET `/api/v2/sale-dashboard/companies/:uuid/features` <!-- done: 2026-05-06 -->
+  - [x] `sdSetCompanyFeatureOverrideRequest(companyUuid, featureUuid, {enabled, reason?})` → PUT <!-- done: 2026-05-06 -->
+  - [x] `sdRemoveCompanyFeatureOverrideRequest(companyUuid, featureUuid)` → DELETE <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม URL builders ใน `sale-dashboard.ts`: `saleDashboardCompanyFeatures(uuid)` + `saleDashboardCompanyFeatureDetail(uuid, featureUuid)` (prefix `saleDashboard*` เพื่อกัน collision กับ legacy `companyFeatures(id)` ที่ชี้ไป `/company-settings/...`) <!-- done: 2026-05-06 -->
+- [x] **F3.3** สร้าง action/reducer/saga + register <!-- done: 2026-05-06 -->
+  - [x] Actions (`sale-dashboard-company-features.ts`): 3 RSF triplets + 2 cleanup helpers (clearError, clearList) <!-- done: 2026-05-06 -->
+  - [x] Reducer with `replaceRowByFeatureUuid` immutable map (single-row update, ไม่ refetch list) <!-- done: 2026-05-06 -->
+  - [x] Saga: `takeLatest` สำหรับ GET, `takeEvery` สำหรับ set/remove (ป้องกัน rapid toggle หลายแถวถูก cancel) <!-- done: 2026-05-06 -->
+  - [x] Register: actions/index.ts + reducers/index.ts (slot `saleDashboardCompanyFeatures`) + sagas/index.ts (`watchSaleDashboardCompanyFeatures`) <!-- done: 2026-05-06 -->
+- [x] **F3.4** สร้าง hook `useSaleDashboardCompanyFeatures` (อยู่ในไฟล์ reducer ตาม pattern Phase 2) <!-- done: 2026-05-06 -->
+  - [x] Returns: `{...state, getCompanyFeatures, setCompanyFeatureOverride, removeCompanyFeatureOverride, clearError, clearList}` <!-- done: 2026-05-06 -->
+  - [x] ทุก dispatcher wrap `useCallback([dispatch])` (Phase 2 max-depth bug fix pattern) <!-- done: 2026-05-06 -->
+  - [x] TS pass + prettier conformant <!-- done: 2026-05-06 -->
 
 ### Frontend — Page D: Features Tab
 
-- [ ] **F3.5** สร้าง `happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx`
-- [ ] **F3.6** สร้าง `feature-tab/components/company-feature-list.tsx`
-- [ ] **F3.7** สร้าง `feature-tab/components/company-feature-row.tsx`
-- [ ] **F3.8** สร้าง `feature-tab/components/company-feature-toggle-confirm-dialog.tsx`
-- [ ] **F3.9** สร้าง `feature-tab/components/company-feature-source-filter.tsx`
-- [ ] **F3.10** เพิ่ม tab "Features" ใน existing client detail view
-  - [ ] หา file ที่ render tabs ของ `/dashboard/client-management/[uuid]` (อาจเป็น `client-management-detail-view` หรือชื่อใกล้เคียง)
-  - [ ] เพิ่ม tab item ใหม่
-- [ ] **F3.11** Manual UAT — toggle/reset/source badge ถูกต้อง
+- [x] **F3.5** สร้าง `happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx` <!-- done: 2026-05-06 -->
+  - [x] Orchestrator: load list on mount via `getCompanyFeatures(companyUuid)` + cleanup `clearList()` on unmount <!-- done: 2026-05-06 -->
+  - [x] Local state: `sourceFilter` (default `'all'`) + dialog open + `targetItem` <!-- done: 2026-05-06 -->
+  - [x] Derived via `useMemo`: `counts` (6 buckets — all + 5 source variants) + `filteredList` (no-op for 'all', .filter otherwise) <!-- done: 2026-05-06 -->
+  - [x] Toast for `listError` + `toggleError` (auto-clear via `clearError()` after emission) <!-- done: 2026-05-06 -->
+  - [x] All handlers wrapped in `useCallback` for stable child memoization <!-- done: 2026-05-06 -->
+- [x] **F3.6** สร้าง `feature-tab/components/company-feature-list.tsx` <!-- done: 2026-05-06 -->
+  - [x] Pure presentational; renders `<Skeleton/>` × 4 while loading; "no_features" empty state <!-- done: 2026-05-06 -->
+- [x] **F3.7** สร้าง `feature-tab/components/company-feature-row.tsx` <!-- done: 2026-05-06 -->
+  - [x] Reuses Phase 2 `<FeatureSourceBadge source={...}/>` + bilingual name via `getBilingualText` + currentLang <!-- done: 2026-05-06 -->
+  - [x] Per-row `disabled = togglingFeatureUuid === item.featureUuid` (lock only the flipping row) <!-- done: 2026-05-06 -->
+  - [x] `Switch onClick` (not onChange) intercepts user gesture → calls `onToggle(item)` to open dialog (no optimistic flip) <!-- done: 2026-05-06 -->
+  - [x] Override reason rendered under name when present <!-- done: 2026-05-06 -->
+- [x] **F3.8** สร้าง `feature-tab/components/company-feature-toggle-confirm-dialog.tsx` <!-- done: 2026-05-06 -->
+  - [x] Dialog mode logic: `hasOverride` (source startsWith `override-`) → 3 buttons (Cancel + Reset to Default + Set); else 2 buttons (Cancel + Set) <!-- done: 2026-05-06 -->
+  - [x] Reason TextField (max 500 chars + char counter) with reset on open <!-- done: 2026-05-06 -->
+  - [x] Confirm Set button color reflects target state (primary for enable, error for disable) <!-- done: 2026-05-06 -->
+- [x] **F3.9** สร้าง `feature-tab/components/company-feature-source-filter.tsx` <!-- done: 2026-05-06 -->
+  - [x] MUI `<Select>` with 6 options (`all` + 5 sources) + count suffix per option <!-- done: 2026-05-06 -->
+  - [x] Type-safe `CompanyFeatureSourceFilterValue` + `CompanyFeatureSourceCounts` exported for parent use <!-- done: 2026-05-06 -->
+- [x] **F3.10** เพิ่ม tab "Features" ใน existing client detail view <!-- done: 2026-05-06 -->
+  - [x] File: `src/sections/client-management/company/list-view.tsx` (existing tabs render at line ~350) <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `<Tab value="features"...>` + conditional render `{currentTab === "features" && param?.uuid && <CompanyFeaturesTabView companyUuid={String(param.uuid)} />}` <!-- done: 2026-05-06 -->
+  - [x] No `<Can>` wrapper (backend `requireSuperAdmin` enforces) — left as-is per spec <!-- done: 2026-05-06 -->
+- [ ] **F3.11** Manual UAT — toggle/reset/source badge ถูกต้อง (deferred to QA wave)
 
 ---
 
@@ -574,6 +634,46 @@ status: draft
 - [x] **PSV.8** Prettier formatted — 4 ไฟล์ unchanged after run (already conformant) <!-- done: 2026-05-05 -->
 - [x] **PSV.9** DB re-verify หลัง code change — `SELECT status_type, COUNT(*) GROUP BY` ของ 3 tables ยังคงเป็น active เท่านั้น (ไม่มี state mutation จาก code change) <!-- done: 2026-05-05 -->
 - [ ] **PSV.10** Smoke test — `GET /api/v2/sale-dashboard/features?statusType=archived` คาดหวัง 400 (Zod reject) — รอ user/QA verify บน dev server <!-- pending: requires dev server running -->
+
+---
+
+## Phase 3 CR Fix Wave (2026-05-06)
+
+> Code review verdict: PASS-with-fixes (0 critical / 2 high / 3 medium / 4 low). 7 of 9 findings fixed in this wave; 2 deferred with rationale below.
+> Source: `document/requirement/feature-management/cr-phase3.md`
+
+### Fixed in this wave (7)
+
+- [x] **CR-H1** Consolidate duplicate override-query — removed `getOverridesByCompanyRepository` from `companyFeature.repository.ts`; service now imports `getCompanyOverridesRepository` from `permissionResolver.repository.ts`; `OverrideRowDb` is now a type alias of `CompanyOverrideRow` to keep adapter API stable <!-- done: 2026-05-06 -->
+  - Files: `happywork-backend/src/modules/v2/sale-dashboard/companyFeature/{companyFeature.repository.ts, companyFeature.interface.ts, companyFeature.service.ts}`
+- [x] **CR-H2** Removed `console.error` in 3 worker sagas + `console.log` startup banner from watcher in `happywork-sale-cms/src/store/sagas/sale-dashboard-company-features.ts`. Failure actions still surface errors via reducer → toast (no client logger added — none exists in project) <!-- done: 2026-05-06 -->
+- [x] **CR-M1** Removed `'23505'` (unique_violation) from DB-error race-condition catch in `setCompanyFeatureOverrideService` — UPSERT's `ON CONFLICT` resolves it atomically so the code path is dead. Kept `'40001'` + `'40P01'`; added inline comment explaining why <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts`
+- [x] **CR-M2** Added `WHERE jsonb_typeof(f.menu_keys) = 'array'` guard to `getFeatureMenuKeysRepository` LATERAL `jsonb_array_elements_text` query — prevents 500 if any row has malformed `menu_keys` JSONB (defense at read path) <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts`
+- [x] **CR-M3** Eliminated duplicate Seed-fallback logic — extracted `resolveEffectivePackageIdService` into `permissionResolver.service.ts` (cached under `packageId:{companyId}` cache key); both `resolveCompanyEffectiveFeatureIdsService` and `companyFeature.service.buildCompanyFeatureList` now consume this single helper. Adapter still receives `packageFeatureIds` + `addonFeatureIds` separately for `source` attribution per SSD §3.3 <!-- done: 2026-05-06 -->
+  - Files: `happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts`, `happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts`
+- [x] **CR-L2** Dialog now stays open during in-flight submit. `handleConfirmSet` / `handleConfirmReset` no longer close synchronously; an effect watches `togglingFeatureUuid` and auto-closes when it transitions from `targetItem.featureUuid` → `null` (success or error). User now sees Confirm button's `isSubmitting` state. Cancel still closes synchronously <!-- done: 2026-05-06 -->
+  - File: `happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx`
+- [x] **CR-L4** `getCompanyPackageIdRepository` now selects only `packageId` (was over-fetching `id`) <!-- done: 2026-05-06 -->
+  - File: `happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts`
+
+### Deferred (2)
+
+- [ ] **CR-L1** `logger.error` with `{ level: 'warn' }` workaround pattern — defer to Phase 4 prep. Touches the cross-cutting diagnostic logger module; adding a real `logger.warn()` requires impact assessment beyond this wave's scope. NULL-package path is operationally rare today; will be hit on every permission request in Phase 4, so fix is required before Phase 4 ships.
+- [ ] **CR-L3** `EMPTY_COUNTS` spread → reduce/`Object.fromEntries` — deferred. Reviewer flagged as cosmetic-only; current implementation is functionally correct and safe (shallow spread does not mutate the constant).
+
+### Verification
+
+- TS type-check (`tsc --noEmit`): both `happywork-backend` + `happywork-sale-cms` pass clean (backend run with `NODE_OPTIONS=--max-old-space-size=8192` due to project size, not related to this wave)
+- Prettier (`prettier --write`): all 7 edited files conformant
+- Grep verifications:
+  - `getOverridesByCompanyRepository`: 0 callers/decls remaining (only doc-comment references)
+  - `console.*` in saga file: 0
+  - `'23505'` in companyFeature.service: 0
+  - `jsonb_typeof(f.menu_keys) = 'array'`: present in repo
+  - `resolveEffectivePackageIdService`: 1 export + 2 call sites (resolver self + companyFeature service)
+  - `getCompanyPackageIdRepository`: `.select('packageId')` (single column)
 
 ---
 

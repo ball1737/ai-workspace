@@ -1,6 +1,6 @@
 ---
 agent: developer
-updated: 2026-05-05
+updated: 2026-05-06
 ---
 
 # Developer Agent — Current Task
@@ -12,26 +12,112 @@ updated: 2026-05-05
 
 ## Active Task
 
-_(no active task — Phase 2 of feature-management complete; awaiting user manual verify + QA wave)_
+**Phase 3 CR Fix Wave** — fix 7 of 9 CR findings (H1+H2+M1+M2+M3+L2+L4); skip L1 (defer Phase 4 prep) + L3 (cosmetic). Done 2026-05-06.
+
+Source: `document/requirement/feature-management/cr-phase3.md`
+
+(Wave 1 P3.7–P3.9 permissionResolver — done 2026-05-06; Wave 2 P3.1–P3.6 companyFeature backend — done 2026-05-06; Waves 3+4 frontend — done 2026-05-06; CR fix wave — done 2026-05-06)
 
 ---
 
 ## Active Track
 
-_(N/A — no active task)_
+both (backend H1+M1+M2+M3+L4 first; frontend H2+L2 after)
 
 ---
 
 ## Files Read Memory (Session-scoped)
 
-> **กฏ master §15:** ก่อนเรียก Read tool ต้องเช็ค table นี้ก่อน — ถ้าไฟล์มีอยู่ + ยังไม่ถูก Edit → ใช้ memory ห้าม re-read
->
-> **Invalidation:** ถ้า Edit ไฟล์ → mark `Edited: yes` + refresh takeaways
-> **Scope:** memory valid เฉพาะ current session — start session ใหม่ ต้อง revalidate (อ่านใหม่ 1 ครั้ง)
-
 | Path | Read on | Edited | Key takeaways |
 |------|---------|--------|---------------|
-| _(empty — populated as session progresses)_ | | | |
+| happywork-backend/src/modules/v2/sale-dashboard/packageCrud/packageCrud.service.ts | 2026-05-06 | no | Reference pattern: pre-fetch + N+1 prevention with batch repos; getPackageEffectiveMenusService close to resolver semantics |
+| happywork-backend/src/modules/v2/sale-dashboard/packageCrud/packageCrud.repository.ts | 2026-05-06 | no | Reference patterns: buildBaseQuery filtering active/inactive, batch repos with WHERE IN + GROUP BY, getPackageFeaturesRepository JOIN comp_package_features |
+| happywork-backend/src/database/postgresql/models/data/compCompanyFeatures.model.ts | 2026-05-06 | no | Override table model — overrideStatus 'enabled'/'disabled', reason nullable, FK to comp_features (Q4=B RESTRICT) |
+| happywork-backend/src/database/postgresql/models/data/compCompanyAddons.model.ts | 2026-05-06 | no | Per-company addons replaces JSONB; has expiresAt nullable; Q3=A semantics filter at runtime |
+| happywork-backend/src/database/postgresql/models/data/compFeatures.model.ts | 2026-05-06 | no | Has menuKeys: string[] JSONB attribute; statusType filter at active/inactive |
+| happywork-backend/src/database/postgresql/models/data/compPackages.model.ts | 2026-05-06 | no | Standard model with id/uuid; needs lookup by code='seed' for fallback |
+| happywork-backend/src/database/postgresql/models/data/compCompanies.model.ts | 2026-05-06 | no | packageId is optional (Phase 2); Resolver fallback when null |
+| happywork-backend/src/database/postgresql/models/data/compPermission.ts | 2026-05-06 | no | comp_permission has companyId + permission JSONB + permissionMobile JSONB |
+| happywork-backend/src/database/postgresql/models/data/compPermissionMapping.ts | 2026-05-06 | no | comp_permission_mapping links permission_id to user_id/employee_id/department_id/group_id (NOT directly to userUuid) |
+| happywork-backend/src/database/postgresql/models/data/compPackageFeatures.model.ts | 2026-05-06 | no | Composite PK (packageId, featureId), no soft-delete, no audit |
+| happywork-backend/src/database/postgresql/models/data/compAddonFeatures.model.ts | 2026-05-06 | no | Composite PK (addonId, featureId), no soft-delete |
+| happywork-backend/src/database/postgresql/models/data/compAddons.model.ts | 2026-05-06 | no | Standard addon model |
+| happywork-backend/src/modules/v1/externalAuth/externalAuth.repository.ts | 2026-05-06 | no | findEmployeeByUserUuidRepository: 2-strategy lookup (Employee.sso_user_uuid OR auth_users → employee.user_id); returns companyId. Pattern to reuse for getUserPermissionJsonbRepository |
+| happywork-backend/src/modules/v1/externalAuth/permissions.service.ts | 2026-05-06 | no | Existing permissions.service uses findEmployeeByUserUuid + checkIsAdmin; no JSONB filtering yet |
+| happywork-backend/src/constant/compPermission.ts | 2026-05-06 | no | PermissionDefault tree, leaf detected by hasActionKey (read/create/update/delete/export); collectLeafPaths walker — same logic to reuse for filterPermissionByMenuKeys |
+| happywork-backend/src/constant/general.ts | 2026-05-06 | no | StatusTypeEnumCode enum: ACTIVE='active' |
+| happywork-backend/src/utils/errorMethods.ts | 2026-05-06 | no | errorNotFound, errorInternal, errorBadRequest helpers — return CustomError with msg/status/code |
+| document/requirement/feature-management/ssd.md (§6.2, §7) | 2026-05-06 | no | Resolver flow + error scenarios; Q3=A addon expiry; Q4=B feature.status_type='active' filter; Seed fallback when company.package_id NULL |
+| document/requirement/feature-management/backend.md (§2.5) | 2026-05-06 | no | Resolver service signatures: 4 functions, in-request memoization for N+1 prevention |
+| document/requirement/feature-management/checklist.md (P3.7-P3.9) | 2026-05-06 | yes | P3.7-P3.9 ticked + sub-items expanded with actual function names + path sync note (sale-dashboard router) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts | 2026-05-06 | yes (created) | EffectiveFeatureIds, EffectiveMenuKeys, ResolverCache, CompanyOverrideRow, UserPermissionRow, PermissionJsonb types |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts | 2026-05-06 | yes (created) | 7 repo fns: company.packageId lookup + Seed fallback, package/addon feature ids batch, company overrides JOIN active, feature menu_keys via LATERAL unnest, user permission JSONB lookup |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | yes (created) | 4 public services with Option-C cache param; pure filterPermissionByMenuKeysService recursive walker; uses logger.error level:'warn' since logger.warn not exposed |
+| happywork-backend/src/api/v2/sale-dashboard/feature/feature.routes.ts | 2026-05-06 | no | Phase 2 reference — middleware chain `validateSaleDashboardAccessToken → requireSuperAdmin → validateRequest`; leaf-path-first registration; tags pattern |
+| happywork-backend/src/api/v2/sale-dashboard/feature/feature.controller.ts | 2026-05-06 | no | Reference: resolveActorUuid helper (req.user.uuid ?? userId), handleError + res.success pattern |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.adapter.ts | 2026-05-06 | no | Reference: toMultilingual helper, strip db id, response with uuid only |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.service.ts | 2026-05-06 | no | Reference: error handling + adapter pattern |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.interface.ts | 2026-05-06 | no | Reference: Zod schema shape `{body, query, params}` + types |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.repository.ts | 2026-05-06 | no | Reference: ACTIVE_STATUSES const, buildBaseQuery, batch repo with WHERE IN + GROUP BY |
+| happywork-backend/src/middlewares/requireSuperAdmin.middleware.ts | 2026-05-06 | no | role==='super_admin' check; throws AppError 403 |
+| happywork-backend/src/middlewares/saleDashboardAuth.middleware.ts (lines 60-90) | 2026-05-06 | no | Sets req.user with uuid, userId, saleId, role, email; via SaleDashboardUsers query |
+| happywork-backend/src/api/v2/sale-dashboard/sale-dashboard.routes.ts | 2026-05-06 | yes | Phase 3 mount at `/companies` registered after `/features`/`/packages`/`/addons`, before catch-all `/` mounts |
+| happywork-backend/src/api/v2/sale-dashboard/packageCrud/packageCrud.routes.ts | 2026-05-06 | no | Reference: leaf-path-first registration order (specific `:uuid/features` before `/:uuid` generic) |
+| happywork-backend/src/modules/v2/sale-dashboard/payments/payments.repository.ts (lines 120-135) | 2026-05-06 | no | Existing `getCompanyByUuidRepository` returns shape with name string; companyFeature uses own lookup returning packageId for resolver |
+| happywork-backend/src/database/postgresql/models/data/compFeatures.model.ts | 2026-05-06 | no (re-confirmed) | sortOrder field exists for ordering; jsonAttributes ['name','description','menuKeys'] |
+| document/requirement/feature-management/ssd.md (§3.3 + §4.4 + §7) | 2026-05-06 | no | CompanyFeatureItem shape line 302-309; API spec (note path stale `/v2/companies/...`); error scenarios incl. concurrent toggle row 8 |
+| document/requirement/feature-management/backend.md (§2.4 lines 280-322) | 2026-05-06 | no | companyFeature.service signatures + source decision logic (override > package > addon > default-disabled) |
+| document/requirement/feature-management/checklist.md (P3.1-P3.6) | 2026-05-06 | yes | P3.1-P3.6 ticked + sub-items expanded with actual function names + Q9=A path sync note |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.interface.ts | 2026-05-06 | yes (created) | Zod schemas (3) + CompanyFeatureItem + OverrideRowDb + OverrideStatusType + CompanyFeatureSource + CompanyFeatureListResponse |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.repository.ts | 2026-05-06 | yes (created) | 6 repo fns: getCompanyByUuid, listActiveFeatures, getFeatureByUuidForOverride, getOverridesByCompany (JOIN active filter), upsertOverride (raw ON CONFLICT), removeOverride (hard delete) |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.adapter.ts | 2026-05-06 | yes (created) | Pure computeCompanyFeatureItem + toCompanyFeatureItems; source priority override > package > addon > default-disabled |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts | 2026-05-06 | yes (created) | 3 public services + buildCompanyFeatureList (4 parallel batches via Promise.all + addon-feature-ids sequential 1 hop); Seed fallback; race handling 23505/40001/40P01 → 409 |
+| happywork-backend/src/api/v2/sale-dashboard/companyFeature/companyFeature.controller.ts | 2026-05-06 | yes (created) | 3 controllers; resolveActorUuid; res.success + handleError |
+| happywork-backend/src/api/v2/sale-dashboard/companyFeature/companyFeature.routes.ts | 2026-05-06 | yes (created) | 3 routes mounted at /companies; specific paths first; tags 'Company Features - V2 Sale Dashboard' |
+| happywork-sale-cms/src/types/store/sale-dashboard-feature-management.ts | 2026-05-06 | no | Phase 2 reference for Root state shape pattern + Multilingual reuse |
+| happywork-sale-cms/src/store/services/feature-management-request.ts | 2026-05-06 | no | Phase 2 reference for sd_method_GET/PUT/DELETE wrappers + JSDoc URL pattern |
+| happywork-sale-cms/src/store/services/package-management-request.ts | 2026-05-06 | no | Phase 2 closeout pattern: JSDoc uses `/api/v2/sale-dashboard/...` (post URL fix) — followed for new file |
+| happywork-sale-cms/src/store/actions/sale-dashboard-feature-management.ts | 2026-05-06 | no | Phase 2 reference: createActions REQUEST/SUCCESS/FAILURE triplet + cleanup helpers |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-feature-management.ts | 2026-05-06 | no | Phase 2 reference: handleActions + pickErrorMessage + useCallback hook pattern (CR fix M1 with eslint-disable) |
+| happywork-sale-cms/src/store/sagas/sale-dashboard-feature-management.ts | 2026-05-06 | no | Phase 2 reference: takeLatest watcher + RequestAction generic type |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-package-config-feature.ts | 2026-05-06 | no | Legacy slice using `sdGetFeaturesRequest`/`sdToggleFeatureRequest` — explains why Wave 3 actions use `*CompanyFeature*` naming to avoid collision |
+| happywork-sale-cms/src/store/services/sale-dashboard.ts | 2026-05-06 | yes | URL builders centralized; legacy `companyFeatures(id)` at line ~186 targets `/company-settings/...` (collision avoided via `saleDashboard*` prefix); added 2 new builders for Phase 3 |
+| happywork-sale-cms/src/store/services/sale-dashboard-request.ts | 2026-05-06 | no | sd_method_* axios wrappers; SuccessHandler shape `{success, data, status, code, msg}` — `data` is unwrapped from API envelope |
+| happywork-sale-cms/src/types/store/index.ts | 2026-05-06 | yes | Registered _SaleDashboardCompanyFeatures namespace + RootState slot |
+| happywork-sale-cms/src/store/reducers/index.ts | 2026-05-06 | yes | Registered saleDashboardCompanyFeatures reducer slot |
+| happywork-sale-cms/src/store/sagas/index.ts | 2026-05-06 | yes | Registered watchSaleDashboardCompanyFeatures in rootSaga |
+| happywork-sale-cms/src/store/actions/index.ts | 2026-05-06 | yes | Re-exports sale-dashboard-company-features actions |
+| happywork-sale-cms/src/types/store/sale-dashboard-company-features.ts | 2026-05-06 | yes (created) | F3.1 — types: CompanyFeatureSource union, CompanyFeatureItem, request/response payloads, Root state with togglingFeatureUuid lock |
+| happywork-sale-cms/src/store/services/company-features-request.ts | 2026-05-06 | yes (created) | F3.2 — 3 typed wrappers via sd_method_GET/PUT/DELETE; uses saleDashboardCompanyFeatures + saleDashboardCompanyFeatureDetail builders |
+| happywork-sale-cms/src/store/actions/sale-dashboard-company-features.ts | 2026-05-06 | yes (created) | F3.3 actions — 3 triplets (get/set/remove) + 2 cleanup; failure actions for set/remove also carry featureUuid |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-company-features.ts | 2026-05-06 | yes (created) | F3.3 reducer + F3.4 useSaleDashboardCompanyFeatures hook; replaceRowByFeatureUuid immutable map; per-row togglingFeatureUuid lock; useCallback wrappers |
+| happywork-sale-cms/src/store/sagas/sale-dashboard-company-features.ts | 2026-05-06 | yes (created) | F3.3 saga — takeLatest GET, takeEvery set/remove (rapid multi-row toggle never cancels each other) |
+| document/requirement/feature-management/frontend.md (§3 + §1.4 lines 100-372) | 2026-05-06 | no | Confirmed Q11=A naming; hook spec; tab section name `feature-tab/company-features-tab-view.tsx` (Wave 4) |
+| document/requirement/feature-management/ssd.md (§3.3 + §4.4) | 2026-05-06 | no | CompanyFeatureItem shape; PUT/DELETE return single item (not list-wrapped); URL `/api/v2/sale-dashboard/companies/:uuid/features` (path corrected from stale `/v2/companies/...`) |
+| document/requirement/feature-management/checklist.md (F3.1-F3.4) | 2026-05-06 | yes | F3.1-F3.4 ticked + sub-items expanded with naming-decision justification + technical notes |
+| happywork-sale-cms/src/sections/client-management/company/list-view.tsx | 2026-05-06 | yes | Existing client detail view; Tabs at line ~350; added `features` Tab + conditional CompanyFeaturesTabView render — uses `useParams().uuid` |
+| happywork-sale-cms/src/components/feature-management/feature-source-badge.tsx | 2026-05-06 | no | Phase 2 reusable badge — uses `companyFeatures.source.*` keys; size + color map by source; consumed unchanged in row component |
+| happywork-sale-cms/src/locales/use-locales.ts + config-lang.ts | 2026-05-06 | no | `useLocales()` returns `{t, currentLang}`; `getBilingualText(name, currentLang.value)` for multilingual rendering |
+| happywork-sale-cms/src/layouts/stores/toastStore.ts | 2026-05-06 | no | Toast API: `toast({message, type})` (NOT `{title, description, status}`) — fixed view to match |
+| happywork-sale-cms/src/types/store/sale-dashboard-company-features.ts | 2026-05-06 | no | Wave 3 types reused — `CompanyFeatureItem`, `CompanyFeatureSource`, payloads |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-company-features.ts | 2026-05-06 | no | Wave 3 hook `useSaleDashboardCompanyFeatures()` exposes list + togglingFeatureUuid + dispatchers (all useCallback-wrapped) |
+| happywork-sale-cms/src/locales/langs/en.json | 2026-05-06 | yes | Added `client_management.features` + expanded `companyFeatures.{filter,row,dialog,error,success}` (37 cF keys total) |
+| happywork-sale-cms/src/locales/langs/th.json | 2026-05-06 | yes | Same TH parity (37 cF keys) — verified via JSON-flatten diff |
+| happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx | 2026-05-06 | yes (created) | F3.5 orchestrator — load on mount + clearList cleanup; counts + filteredList useMemo; toast on listError/toggleError + clearError |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-feature-list.tsx | 2026-05-06 | yes (created) | F3.6 — Skeleton×4 loading, no_features empty, maps to row |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-feature-row.tsx | 2026-05-06 | yes (created) | F3.7 — bilingual name + FeatureSourceBadge + Switch.onClick intercept |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-feature-toggle-confirm-dialog.tsx | 2026-05-06 | yes (created) | F3.8 — hasOverride 3-button mode vs 2-button; reason 0/500 counter; reset on open |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-feature-source-filter.tsx | 2026-05-06 | yes (created) | F3.9 — Select 6 options with count suffix; types exported for parent |
+| document/requirement/feature-management/checklist.md (F3.5-F3.10) | 2026-05-06 | yes | Ticked F3.5–F3.10 with sub-item expansion; F3.11 left for QA |
+| document/requirement/feature-management/cr-phase3.md | 2026-05-06 | no | CR report — verdict PASS-with-fixes; 9 findings (0/2/3/4); BLOCKED on H1+H2 |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.repository.ts | 2026-05-06 | yes | CR-H1 — removed `getOverridesByCompanyRepository` (duplicate of resolver's `getCompanyOverridesRepository`); kept upsert + remove |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.interface.ts | 2026-05-06 | yes | CR-H1 — `OverrideRowDb` now type alias of `CompanyOverrideRow` from resolver.interface |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts | 2026-05-06 | yes | CR-H1+M1+M3 — uses `getCompanyOverridesRepository` from resolver repo; uses `resolveEffectivePackageIdService`; removed `'23505'` from race-catch |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts | 2026-05-06 | yes | CR-M2+L4 — added `jsonb_typeof(f.menu_keys) = 'array'` guard; `select('packageId')` only (no `id`) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | yes | CR-M3 — extracted `resolveEffectivePackageIdService` (cached via `packageId:{companyId}`); inner Seed-fallback now reuses it |
+| happywork-sale-cms/src/store/sagas/sale-dashboard-company-features.ts | 2026-05-06 | yes | CR-H2 — removed 3× `console.error` worker logs + `console.log` watcher banner; failure actions still dispatched |
+| happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx | 2026-05-06 | yes | CR-L2 — `wasSubmittingRef` + new `useEffect` auto-closes dialog when `togglingFeatureUuid` clears for `targetItem`; confirm handlers no longer close synchronously |
+| document/requirement/feature-management/checklist.md (Phase 3 CR Fix Wave) | 2026-05-06 | yes | Appended new section listing 7 fixed + 2 deferred items with rationale + verification log |
 
 ---
 
