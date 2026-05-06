@@ -11,7 +11,7 @@
 
 **Type:** long-term
 
-**Status:** Phase 3 **COMPLETE** — BA verdict PASS-with-notes (0 critical, 3 non-critical: L1 logger.warn defer Phase 4, L3 cosmetic, F3.11 manual UAT). Pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`2bf92292`) + hw-sale-cms (`b76fb1e`) (2026-05-06). Pending Phase 4 dispatch (Resolver Integration + Regression).
+**Status:** Phase 3 **COMPLETE** — BA verdict PASS-with-notes (0 critical, 3 non-critical: L1 logger.warn defer Phase 4, L3 cosmetic, F3.11 manual UAT). Pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`2bf92292`) + hw-sale-cms (`b76fb1e`) (2026-05-06). **Features UI relocated** 2026-05-06: ย้าย `<CompanyFeaturesTabView>` จาก `/dashboard/client-management/[uuid]` (deprecated path) → embed ใน `/dashboard/package-config?from=customer&companyId={UUID}` แทน legacy config-feature section ภายใต้ flag `USE_LEGACY_CONFIG_FEATURE=false` (revert ได้); commit `eabc560`. Pending Phase 4 dispatch (Resolver Integration + Regression).
 
 **Started:** 2026-05-04
 
