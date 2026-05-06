@@ -11,7 +11,7 @@
 
 **Type:** long-term
 
-**Status:** Phase 2 in-progress (Master CRUD). Phase 1 commit pushed to `origin/ball/feature/feature-management` 2026-05-05.
+**Status:** Phase 2 **COMPLETE** — BA validation PASS-with-notes (0 critical, 5 non-critical doc-drift), pushed to `origin/ball/feature/feature-management` ทั้ง hw-be (`20eca15f`) + hw-sale-cms (`0734f7a`) (2026-05-06). Doc drift cleaned + effectiveMenus contract fix shipped. Pending Phase 3 dispatch.
 
 **Started:** 2026-05-04
 
@@ -108,7 +108,15 @@ Wave breakdown:
 - Detail views ไม่แก้ — ไม่ส่ง `?from` → branch ทำงานถูกต้อง (back → detail)
 - EBN.1-EBN.8 ticked ใน checklist.md; TS pass + prettier conformant
 
-**Currently:** _(CR Fix Wave done 2026-05-05 — all 6 findings addressed; 59/59 unit tests PASS. Pending: BA validate → push Phase 2)_
+**Currently:** Phase 2 closeout complete (2026-05-06):
+- ✅ BA validation done — Verdict **PASS-with-notes** (0 critical / 5 non-critical doc-drift); report at `document/requirement/feature-management/ba-validation-phase2.md`
+- ✅ Phase 2 commits already on origin verified (hw-be `20eca15f` + hw-sale-cms `f61b70d`); 0/0 ahead/behind
+- ✅ Doc drift fixes — checklist.md P2.1+P2.2 ticked; P2.3-P2.21 paths synced `v2/admin` → `v2/sale-dashboard`; JSDoc in 3 service files synced
+- ✅ Sale-cms contract fix discovered + pushed — 2 commits `b21eaaf` (effectiveMenus `menus` → `menuKeys` to match backend `Promise<readonly string[]>`) + `0734f7a` (JSDoc URL drift) → `origin/ball/feature/feature-management`
+- 🟡 Outstanding (non-blocker, defer to Phase 3 prep):
+  - P2.25 integration test — written 19 TCs, OOM blocked local, ต้องรันบน CI (`--max-old-space-size=4096`)
+  - F2.35 manual UAT — pending; รัน post-deploy
+  - UT-6 / UT-7 / UT-8 standalone spec files — covered indirectly, defer Phase 3
 
 ---
 
@@ -126,6 +134,9 @@ _(จะถูกอัพเดตอัตโนมัติโดย Lead เ
 
 | Date       | Agent     | Action                                                                                                |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-05-06 | Lead      | Phase 2 closeout — sale-cms contract fix (effectiveMenus menus→menuKeys) + JSDoc drift; 2 commits pushed `b21eaaf`+`0734f7a`; checklist + memory updated |
+| 2026-05-06 | Lead      | Doc drift fix — P2.1+P2.2 ticked, P2.3-P2.21 paths synced v2/admin→v2/sale-dashboard, JSDoc 3 service files synced |
+| 2026-05-06 | BA        | BA validation Phase 2 — Verdict PASS-with-notes (0 critical, 5 non-critical); FR/middleware/URL/enum/Q6-Q8/CR all verified; report file written |
 | 2026-05-05 | QA        | P2.22-P2.24 unit tests written + PASS (56 tests); P2.25 integration test written (OOM blocker local); CR findings reported |
 | 2026-05-05 | Frontend  | Edit back nav — 3 list-views append ?from=list; 3 edit-views branch on useSearchParams(); EBN.1-EBN.8 done |
 | 2026-05-05 | Lead      | Spec docs sync — ssd.md + backend.md replaced `/api/v2/admin/` → `/api/v2/` (whole-file replace_all)     |

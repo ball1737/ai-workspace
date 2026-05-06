@@ -82,17 +82,17 @@ status: draft
 
 ### Backend — Constants Update
 
-- [ ] **P2.1** อัพเดต `happywork-backend/src/constant/compPermission.ts`
-  - [ ] เพิ่ม helper `getAvailableMenuKeys(): string[]` — recursive walk ของ PermissionDefault, return leaf paths
+- [x] **P2.1** อัพเดต `happywork-backend/src/constant/compPermission.ts` <!-- done: 2026-05-05 -->
+  - [x] เพิ่ม helper `getAvailableMenuKeys(): string[]` — recursive walk ของ PermissionDefault, return leaf paths <!-- done: 2026-05-05 -->
 
 ### Backend — Middleware
 
-- [ ] **P2.2** สร้าง `happywork-backend/src/middlewares/requireSuperAdmin.middleware.ts` (ถ้ายังไม่มี)
-  - [ ] เช็ค `req.user.role === 'super_admin'` → ผ่าน, ไม่ใช่ → throw 403
+- [x] **P2.2** สร้าง `happywork-backend/src/middlewares/requireSuperAdmin.middleware.ts` (ถ้ายังไม่มี) <!-- done: 2026-05-05 -->
+  - [x] เช็ค `req.user.role === 'super_admin'` → ผ่าน, ไม่ใช่ → throw 403 <!-- done: 2026-05-05 -->
 
 ### Backend — Feature Module
 
-- [x] **P2.3** สร้าง `happywork-backend/src/modules/v2/admin/feature/feature.interface.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.3** สร้าง `happywork-backend/src/modules/v2/sale-dashboard/feature/feature.interface.ts` <!-- done: 2026-05-05 -->
   - [x] Zod schemas: `featureBaseSchema`, `createFeatureSchema`, `updateFeatureSchema`, `listFeaturesSchema` <!-- done: 2026-05-05 -->
   - [x] TS types: `Feature`, `FeatureWithUsage` <!-- done: 2026-05-05 -->
 - [x] **P2.4** สร้าง `feature.repository.ts` <!-- done: 2026-05-05 -->
@@ -106,16 +106,16 @@ status: draft
   - [x] `updateFeatureService`, `deleteFeatureService` (block ถ้ามี usage) <!-- done: 2026-05-05 -->
   - [x] `getAvailableMenuKeysService` <!-- done: 2026-05-05 -->
 - [x] **P2.6** สร้าง `feature.adapter.ts` — convert/normalize for response <!-- done: 2026-05-05 -->
-- [x] **P2.7** สร้าง `happywork-backend/src/api/v2/admin/feature/feature.controller.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.7** สร้าง `happywork-backend/src/api/v2/sale-dashboard/feature/feature.controller.ts` <!-- done: 2026-05-05 -->
   - [x] `getFeatureListController`, `getFeatureByUuidController` <!-- done: 2026-05-05 -->
   - [x] `createFeatureController`, `updateFeatureController`, `deleteFeatureController` <!-- done: 2026-05-05 -->
   - [x] `getAvailableMenuKeysController` <!-- done: 2026-05-05 -->
 - [x] **P2.8** สร้าง `feature.routes.ts` — Express router with middleware chain <!-- done: 2026-05-05 -->
-- [x] **P2.9** Register route ใน `src/api/v2/admin/index.routes.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.9** Register route ใน `src/api/v2/sale-dashboard/index.routes.ts` <!-- done: 2026-05-05 -->
 
 ### Backend — Feature Module — Wave B2 Notes (2026-05-05)
 
-- Routes mounted at `/api/v2/admin/features` (with leaf path `/menu-keys/available` ลงทะเบียนก่อน `/:featureUuid` ใน Express router เพื่อกัน path collision)
+- Routes mounted at `/api/v2/sale-dashboard/features` (with leaf path `/menu-keys/available` ลงทะเบียนก่อน `/:featureUuid` ใน Express router เพื่อกัน path collision)
 - Middleware chain ทุก route: `validateAccessToken` → `requireSuperAdmin` → `validateRequest`
 - Zod schemas register OpenAPI ผ่าน `registerPathSchema` (tags: `Feature Management - V2 Admin`)
 - Adapter strips `id` ภายใน — response มี `uuid` เท่านั้น (ตาม master rules §10.2)
@@ -124,7 +124,7 @@ status: draft
 
 ### Backend — Package CRUD Module
 
-- [x] **P2.10** สร้าง `happywork-backend/src/modules/v2/admin/packageCrud/packageCrud.interface.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.10** สร้าง `happywork-backend/src/modules/v2/sale-dashboard/packageCrud/packageCrud.interface.ts` <!-- done: 2026-05-05 -->
 - [x] **P2.11** สร้าง `packageCrud.repository.ts` <!-- done: 2026-05-05 -->
   - [x] CRUD บน comp_packages <!-- done: 2026-05-05 -->
   - [x] `getPackageFeaturesRepository(packageId)`, `replacePackageFeaturesRepository(packageId, featureIds[])` (transaction) <!-- done: 2026-05-05 -->
@@ -134,14 +134,14 @@ status: draft
   - [x] `replacePackageFeaturesService` <!-- done: 2026-05-05 -->
   - [x] `getPackageEffectiveMenusService` (รวม menu_keys ของ features, dedupe) <!-- done: 2026-05-05 -->
 - [x] **P2.13** สร้าง `packageCrud.adapter.ts` <!-- done: 2026-05-05 -->
-- [x] **P2.14** สร้าง `src/api/v2/admin/packageCrud/packageCrud.controller.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.14** สร้าง `src/api/v2/sale-dashboard/packageCrud/packageCrud.controller.ts` <!-- done: 2026-05-05 -->
   - [x] CRUD controllers <!-- done: 2026-05-05 -->
   - [x] `replacePackageFeaturesController`, `getPackageEffectiveMenusController` <!-- done: 2026-05-05 -->
 - [x] **P2.15** สร้าง `packageCrud.routes.ts` + register <!-- done: 2026-05-05 -->
 
 ### Backend — Package CRUD Module — Wave B3 Notes (2026-05-05)
 
-- Routes mounted at `/api/v2/admin/packages` (specific leaf paths `/:uuid/features` + `/:uuid/effective-menus` ลงทะเบียนก่อน `/:packageUuid` ใน Express router เพื่อกัน path collision เหมือน B2)
+- Routes mounted at `/api/v2/sale-dashboard/packages` (specific leaf paths `/:uuid/features` + `/:uuid/effective-menus` ลงทะเบียนก่อน `/:packageUuid` ใน Express router เพื่อกัน path collision เหมือน B2)
 - Composite UNIQUE(code, billing_interval) — ตรวจ uniqueness ที่ service ผ่าน `getPackageByCodeAndBillingIntervalRepository` (ไม่ตรวจ code อย่างเดียว) + handle `null` billing_interval ด้วย `whereNull`
 - `replacePackageFeaturesRepository` ใช้ `CompPackageFeatures.transaction(async (trx) => ...)` — delete + insert ใน 1 trx, rollback อัตโนมัติถ้า fail
 - `replacePackageFeaturesService` validate ทุก feature uuid ผ่าน `getActiveFeaturesByUuidsRepository` (batch WHERE IN) ก่อนแก้ trx → defense in depth นอกจาก FK RESTRICT (Q4=B)
@@ -161,19 +161,19 @@ status: draft
 
 ### Backend — Addon Module
 
-- [x] **P2.16** สร้าง `happywork-backend/src/modules/v2/admin/addon/addon.interface.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.16** สร้าง `happywork-backend/src/modules/v2/sale-dashboard/addon/addon.interface.ts` <!-- done: 2026-05-05 -->
   - [x] Validation: is_quantifiable=true → max_quantity required (Zod refine + service defense in depth) <!-- done: 2026-05-05 -->
 - [x] **P2.17** สร้าง `addon.repository.ts` <!-- done: 2026-05-05 -->
   - [x] CRUD + `getAddonFeaturesRepository`, `replaceAddonFeaturesRepository` (transaction) <!-- done: 2026-05-05 -->
 - [x] **P2.18** สร้าง `addon.service.ts` <!-- done: 2026-05-05 -->
   - [x] CRUD + replaceAddonFeaturesService + delete validation (block ถ้ามี company purchase) <!-- done: 2026-05-05 -->
 - [x] **P2.19** สร้าง `addon.adapter.ts` <!-- done: 2026-05-05 -->
-- [x] **P2.20** สร้าง `src/api/v2/admin/addon/addon.controller.ts` + `addon.routes.ts` <!-- done: 2026-05-05 -->
+- [x] **P2.20** สร้าง `src/api/v2/sale-dashboard/addon/addon.controller.ts` + `addon.routes.ts` <!-- done: 2026-05-05 -->
 - [x] **P2.21** Register route <!-- done: 2026-05-05 -->
 
 ### Backend — Addon Module — Wave B3 Notes (2026-05-05)
 
-- Routes mounted at `/api/v2/admin/addons` (leaf path `/:uuid/features` ลงทะเบียนก่อน `/:addonUuid`)
+- Routes mounted at `/api/v2/sale-dashboard/addons` (leaf path `/:uuid/features` ลงทะเบียนก่อน `/:addonUuid`)
 - Composite UNIQUE(code, billing_interval) — pattern เดียวกับ package
 - `is_quantifiable=true → maxQuantity > 0`: enforce 2 ชั้น
   1. Zod schema (create) ใช้ `.refine()` ครอบทั้ง object
@@ -544,8 +544,8 @@ status: draft
 > Bug: Phase 2 routes (B2/B3/B4) ใช้ `basePath = '/api/v2/admin/...'` ใน OpenAPI registration ทั้งที่ Express mount จริงคือ `/api/v2/{features|packages|addons}` (ไม่มี `/admin`). Swagger จึงโชว์ path ผิด, client ที่ทดสอบผ่าน Swagger จะ hit URL ผิด → 404.
 > Fix: Pure path string update — เปลี่ยน `basePath` constant + comment URL ทุกบรรทัดให้ตรงกับ Express mount จริง. ไม่แตะ Express routing / middleware chain.
 
-- [x] **PURL.1** `happywork-backend/src/api/v2/admin/feature/feature.routes.ts` — `basePath = '/api/v2/features'` + comment URLs (lines 27, 43, 53, 63, 73, 83) <!-- done: 2026-05-05 -->
-- [x] **PURL.2** `happywork-backend/src/api/v2/admin/packageCrud/packageCrud.routes.ts` — `basePath = '/api/v2/packages'` + comment URLs (lines 34, 50, 66, 83, 93, 103, 113, 123) <!-- done: 2026-05-05 -->
+- [x] **PURL.1** `happywork-backend/src/api/v2/sale-dashboard/feature/feature.routes.ts` — `basePath = '/api/v2/features'` + comment URLs (lines 27, 43, 53, 63, 73, 83) <!-- done: 2026-05-05 -->
+- [x] **PURL.2** `happywork-backend/src/api/v2/sale-dashboard/packageCrud/packageCrud.routes.ts` — `basePath = '/api/v2/packages'` + comment URLs (lines 34, 50, 66, 83, 93, 103, 113, 123) <!-- done: 2026-05-05 -->
 - [x] **PURL.3** `happywork-backend/src/api/v2/admin/addon/addon.routes.ts` — `basePath = '/api/v2/addons'` + comment URLs (lines 29, 45, 55, 65, 75, 85) <!-- done: 2026-05-05 -->
 - [x] **PURL.4** Verify grep — ไม่มี `/api/v2/admin/{features,packages,addons}` หลงเหลือใน `src/` <!-- done: 2026-05-05 -->
 - [x] **PURL.5** TS compile clean (`tsc --noEmit` exit 0) + Prettier formatted (3 files unchanged after run) <!-- done: 2026-05-05 -->
