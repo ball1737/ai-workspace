@@ -249,13 +249,36 @@ owner: Lead
 
 | ID | Task | Owner | Status | Doc Ref | Updated |
 |----|------|-------|--------|---------|---------|
-| FEAT-701 | Migrate caller of v1 `featureManagement` module → new resolver/companyFeature | Backend | pending | — | |
-| FEAT-702 | Drop migration: `*-drop-sale_dashboard_disabled_features.ts` | Backend | pending | — | |
-| FEAT-703 | Drop module: `src/modules/v1/featureManagement/` | Backend | pending | — | |
-| FEAT-704 | Drop constant: `src/constant/featureDefinitions.ts` | Backend | pending | — | |
-| FEAT-705 | Migrate v1 callers of `const_packages` (paymentProcessing, subscription, trialExpiration, customers, leads, quotations, employees/employeeLimit) | Backend | pending | — | |
-| FEAT-706 | Drop `const_packages` (after FEAT-705) | Backend | pending | — | |
-| FEAT-707 | Drop column `comp_companies.add_ons` (jsonb) | Backend | pending | — | |
+| FEAT-701 | Migrate caller of v1 `featureManagement` module → new resolver/companyFeature | Backend | done 2026-05-07 | Wave 6.1 — FE caller was dead-code under USE_LEGACY_CONFIG_FEATURE=false | hw-sale-cms `aea62c8` |
+| FEAT-702 | Drop migration: `*-drop-sale_dashboard_disabled_features.ts` | Backend | done 2026-05-07 | Wave 6.1 — `20260507-0900-drop-sale-dashboard-disabled-features-table.ts` (NOT yet applied to dev DB) | hw-be `1be5dbfa` |
+| FEAT-703 | Drop module: `src/modules/v1/featureManagement/` | Backend | done 2026-05-07 | Wave 6.1 | hw-be `1be5dbfa` |
+| FEAT-704 | Drop constant: `src/constant/featureDefinitions.ts` | Backend | done 2026-05-07 | Wave 6.1 | hw-be `1be5dbfa` |
+| FEAT-705 | Migrate v1 callers of `const_packages` (paymentProcessing, subscription, trialExpiration, customers, leads, quotations, employees/employeeLimit) | Backend | **SKIPPED** 2026-05-07 | ⚠ ยกไปทำเป็น requirement ใหม่ (Stripe sync rewrite) ที่ใช้ `comp_packages` + `comp_company_addons` (Phase 1-5 schema) | |
+| FEAT-706 | Drop `const_packages` (after FEAT-705) | Backend | **SKIPPED** 2026-05-07 | ⚠ ยกไปทำเป็น requirement ใหม่พร้อม FEAT-705 | |
+| FEAT-707 | Drop column `comp_companies.add_ons` (jsonb) | Backend | **SKIPPED** 2026-05-07 | ⚠ ยกไปทำเป็น requirement ใหม่พร้อม FEAT-705 | |
+
+---
+
+## Phase 7: Addon UUID Sync (extra — added 2026-05-07)
+
+> Mirror ของ Package B4 (Stripe sync) — ปรับให้ Addon แก้ไข UUID ได้เหมือน Package
+> เหตุผล: Addon ก็ต้อง sync กับ Stripe เหมือน Package — ปัจจุบันมีแค่ Package ที่แก้ UUID ได้
+> Scope: PATCH `/api/v2/sale-dashboard/addons/:addonUuid/identifier`
+> ⚠ Addon ไม่มี `comp_company_addons.addon_uuid` denormalized column → single-table transaction (ง่ายกว่า Package B4 ที่ต้อง update `comp_companies.selected_package_uuid` ด้วย)
+
+| ID | Task | Owner | Status | Doc Ref | Updated |
+|----|------|-------|--------|---------|---------|
+| FEAT-801 | BE: Add `updateAddonUuid{Schema,Params,Body}` + types in `addon.interface.ts` | Backend | done 2026-05-07 | hw-be `8c8f608e` | |
+| FEAT-802 | BE: Add `updateAddonUuidRepository` + `getAddonByUuidIncludingArchivedRepository` | Backend | done 2026-05-07 | hw-be `8c8f608e` | |
+| FEAT-803 | BE: Add `updateAddonUuidService` (5-step validation + trx) | Backend | done 2026-05-07 | hw-be `8c8f608e` (single-table trx — no addon_uuid denormalized) | |
+| FEAT-804 | BE: Add `updateAddonUuidController` | Backend | done 2026-05-07 | hw-be `8c8f608e` | |
+| FEAT-805 | BE: Register `PATCH /:addonUuid/identifier` route (BEFORE `PUT /:addonUuid` collision guard) | Backend | done 2026-05-07 | hw-be `8c8f608e` | |
+| FEAT-811 | FE: Create `src/components/addon-management/addon-uuid-edit-dialog.tsx` (mirror package-uuid-edit-dialog) | Frontend | done 2026-05-07 | hw-sale-cms `7f2a8bd` | |
+| FEAT-812 | FE: Add UUID update actions/reducer/saga to `sale-dashboard-addon-management` slice | Frontend | done 2026-05-07 | hw-sale-cms `7f2a8bd` | |
+| FEAT-813 | FE: Add `updateAddonUuidRequest` + `addonUuidIdentifier` URL builder | Frontend | done 2026-05-07 | hw-sale-cms `7f2a8bd` (named `adminAddonIdentifier`) | |
+| FEAT-814 | FE: Mount `<AddonUuidEditDialog>` in `addon-detail-view.tsx` (header button + URL navigation on success) | Frontend | done 2026-05-07 | hw-sale-cms `7f2a8bd` | |
+| FEAT-815 | FE: Add `addonManagement.uuidEdit.*` i18n keys (en + th parity, mirror packageManagement structure) | Frontend | done 2026-05-07 | hw-sale-cms `7f2a8bd` (13/13 keys parity) | |
+| FEAT-820 | TS check + Prettier + commit/push | Lead | done 2026-05-07 | TS check 0 errors both repos; pushed origin/ball/feature/feature-management | |
 
 ---
 

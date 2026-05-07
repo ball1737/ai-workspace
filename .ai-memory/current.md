@@ -11,7 +11,11 @@
 
 **Type:** long-term
 
-**Status:** Phase 5 **COMPLETE** (2026-05-07) — BA verdict PASS-with-notes (0 critical / 4 non-critical defer-able). Pushed to `origin/ball/feature/feature-management` hw-be (`fdb79869` snap + `467b395d` CR fix) + hw-sale-cms (`3676e46`). Phase 4 closed 2026-05-06 (hw-be `bffc2dbf`). Phase 3 closed 2026-05-06.
+**Status:** Phase 6 Wave 6.1 **COMPLETE** (2026-05-07) — drop legacy v1 featureManagement chain (LOW risk dead-code). Pushed: hw-be `1be5dbfa` + hw-sale-cms `aea62c8`. ⚠ Run `pnpm db:migrate:latest` on dev DB to apply drop migration `20260507-0900-drop-sale-dashboard-disabled-features-table`. Phase 5 done 2026-05-07; Phase 4 closed 2026-05-06; Phase 3 closed 2026-05-06.
+
+**Phase 6 Wave 6.2-6.4 SKIPPED (2026-05-07)** — User decision: ยกไปทำเป็น **requirement ใหม่** (Stripe sync rewrite) ที่จะใช้ `comp_packages` + `comp_company_addons` (Phase 1-5 schema). FEAT-705 (const_packages migrate), FEAT-706 (drop const_packages), FEAT-707 (drop comp_companies.add_ons) — ทั้งหมด out of scope ของ feature-management แล้ว.
+
+**Phase 7 — Addon UUID Sync COMPLETE (2026-05-07):** PATCH `/api/v2/sale-dashboard/addons/:addonUuid/identifier` mirror Package B4. Single-table trx (Addon ไม่มี denormalized addon_uuid). Pushed: hw-be `8c8f608e` (5 files +181 LOC) + hw-sale-cms `7f2a8bd` (10 files +448/-15 LOC). No DB migration needed. RBAC resource `addons` action `manage`. Error codes: `ADDON_UUID_UNCHANGED` / `ADDON_NOT_FOUND` / `ADDON_UUID_CONFLICT`.
 
 **Phase 5 implementation (Mobile Menu Parity):** User แจ้ง "ลืม" จาก Phase 1-4 = `PermissionMobileDefault` ใน `compPermission.ts` ไม่ถูก wire กับ feature management. ทำครบ 11 waves: W1 schema+helper / W2 Feature CRUD / W3 resolver mobile path / W4 external auth + user-info / W5 compPermission BUG fix + mobile validate / W6-W8 FE redux+UI Web|Mobile cols / W9 QA parameterized 135/135 PASS / W10 CR PASS-with-fixes (1H+3M+3L) / CR Fix Wave 5/7 (skip M3+L1+L3) / W11 BA + push.
 
@@ -166,6 +170,13 @@ _(จะถูกอัพเดตอัตโนมัติโดย Lead เ
 
 | Date       | Agent     | Action                                                                                                |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-05-07 | Lead      | Phase 7 closeout — pushed hw-be `8c8f608e` + hw-sale-cms `7f2a8bd`; Addon UUID Sync mirror Package B4; single-table trx; 13 i18n keys parity |
+| 2026-05-07 | Developer | Phase 7 implementation — BE 5 files (+181) / FE 10 files (+448/-15); TS check 0 errors both repos; Prettier conformant; en+th i18n parity 13/13 |
+| 2026-05-07 | Lead      | Phase 6 Wave 6.2-6.4 SKIP + Phase 7 added — user ยก const_packages/add_ons cleanup ไปเป็น requirement ใหม่ (Stripe sync rewrite); เพิ่ม Phase 7 Addon UUID Sync mirror Package B4 |
+| 2026-05-07 | Lead      | Phase 6 Wave 6.1 closeout — pushed hw-be `1be5dbfa` + hw-sale-cms `aea62c8`; drop legacy v1 featureManagement chain (4 BE folders + redux+saga+service FE); test spec misnamed flag for follow-up rename |
+| 2026-05-07 | Developer | Wave 6.1 implementation — TS check 0 errors both repos; grep verify clean; migration created (NOT run) |
+| 2026-05-07 | Lead      | Phase 6 Wave 6.1 dispatch — Audit blast radius PASSED (LOW risk, dead-code only); user picked option C (Wave 6.1 only) |
+| 2026-05-07 | Lead      | Bug fix wave — /comp-permission/default fallback req.user.companyId (BE) + view feature card move + package detail mobile menus parity (BE+FE BREAKING shape) |
 | 2026-05-06 | Lead      | Phase 5 plan approved — Mobile Menu Parity (8 Q resolved, 11 waves); Cleanup เลื่อน Phase 6; doc updates: requirement.md FR-Mobile-1..7, task-list.md FEAT-801..922, checklist.md P5.x.x, migration.md M9+M10, summary.md |
 | 2026-05-06 | Lead      | Phase 3 closeout — pushed hw-be `2bf92292` + hw-sale-cms `b76fb1e`; BA PASS-with-notes; 75/75 tests PASS |
 | 2026-05-06 | BA        | BA validation Phase 3 — PASS-with-notes (0 crit / 3 non-crit); FR-4/FR-5 ครบ, Q3+Q4+Q9 verified, CR fixes verified, DEF-001 closed false-positive |
