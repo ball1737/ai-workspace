@@ -498,12 +498,133 @@ SELECT
 
 ---
 
-## Phase 5 (Future) — Cleanup
+## Phase 5 — Mobile Menu Parity (Added 2026-05-06)
 
-หลังจาก deploy รุ่นนี้ stable แล้ว Phase 5:
+> เพิ่ม `mobile_menu_keys` ให้ master data + backfill SEED tier features ก่อน deploy
 
-- M9: drop table `sale_dashboard_disabled_features`
-- M10: drop table `const_packages` (เมื่อ confirm ว่า v1 caller ทุกตัวถูก migrate แล้ว)
-- M11: drop column `comp_companies.add_ons` (jsonb) ที่ไม่ใช้แล้ว
+### M9: ALTER comp_features ADD mobile_menu_keys
+
+**Filename:** `20260506-1800-alter-comp_features-add-mobile_menu_keys.ts` _(implemented 2026-05-06, Phase 5 W1)_
+
+**Purpose:** เพิ่ม column `mobile_menu_keys` JSONB NOT NULL DEFAULT `'[]'` + GIN index คู่ขนานกับ `menu_keys`
+
+**Rollback:** down() drops index แล้ว drop column — safe เพราะ column ใหม่ + GIN index ใหม่ ไม่กระทบ data ที่มีอยู่
+
+```typescript
+import { Knex } from 'knex';
+
+const tableName = 'comp_features';
+const columnName = 'mobile_menu_keys';
+const ginIndexName = 'idx_comp_features_mobile_menu_keys_gin';
+
+export async function up(knex: Knex): Promise<void> {
+  await knex.raw(`
+    ALTER TABLE ${tableName}
+    ADD COLUMN ${columnName} JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
+
+  await knex.raw(`
+    CREATE INDEX IF NOT EXISTS ${ginIndexName}
+    ON ${tableName} USING GIN (${columnName})
+  `);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.raw(`DROP INDEX IF EXISTS ${ginIndexName}`);
+  await knex.raw(`ALTER TABLE ${tableName} DROP COLUMN IF EXISTS ${columnName}`);
+}
+```
+
+### M10: Backfill SEED tier mobile_menu_keys
+
+**Filename:** `20260506-1801-backfill-comp_features-mobile_menu_keys-seed.ts` _(implemented 2026-05-06, Phase 5 W1)_
+
+**Purpose:** กรอก `mobile_menu_keys` ให้ 4 features ของ SEED tier (`basic_attendance`, `basic_leave`, `basic_reports`, `max_10_users`) ตาม mapping ที่ user-confirmed (Q7=A+B) — feature ของ CORE/PRO ปล่อย `[]` ไว้ ให้ admin populate ผ่าน CMS
+
+**Idempotency:** `WHERE code = ? AND status_type = 'active'` — กัน update row archived ในอนาคต (Q4=B compatibility) + run ซ้ำได้
+
+**Validation note:** ทุก key ในรายการคือ leaf path ของ `PermissionMobileDefault` (verified ตรงกับ `getAvailableMobileMenuKeys()` ที่ Wave 1 helper exports) — ถ้า PermissionMobileDefault ถูกแก้ในอนาคตให้ key ไม่ตรง ต้องเพิ่ม migration ใหม่ ห้ามแก้ไฟล์เก่าย้อนหลัง
+
+> **User-confirmed mapping (2026-05-06):**
+>
+> | feature_code | mobile_menu_keys (leaf paths ของ `PermissionMobileDefault`) |
+> | --- | --- |
+> | `basic_attendance` | `homepage.attendance`, `timeAttendance.myReport` |
+> | `basic_leave` | `homepage.request`, `homepage.myRequest`, `homepage.calendar` |
+> | `basic_reports` | `timeAttendance.teamReport` |
+> | `max_10_users` | `[]` _(capacity feature ไม่มี UI menu)_ |
+
+**Rollback:** down() set กลับเป็น `[]` เฉพาะ 4 SEED rows — column ยังคงอยู่ (column drop เป็น scope ของ M9 down)
+
+```typescript
+import { Knex } from 'knex';
+
+const tableName = 'comp_features';
+
+interface SeedMobileMapping {
+  readonly code: string;
+  readonly mobileMenuKeys: readonly string[];
+}
+
+const SEED_MOBILE_MAPPING: readonly SeedMobileMapping[] = [
+  { code: 'basic_attendance', mobileMenuKeys: ['homepage.attendance', 'timeAttendance.myReport'] },
+  { code: 'basic_leave', mobileMenuKeys: ['homepage.request', 'homepage.myRequest', 'homepage.calendar'] },
+  { code: 'basic_reports', mobileMenuKeys: ['timeAttendance.teamReport'] },
+  { code: 'max_10_users', mobileMenuKeys: [] },
+];
+
+export async function up(knex: Knex): Promise<void> {
+  for (const entry of SEED_MOBILE_MAPPING) {
+    await knex(tableName)
+      .where({ code: entry.code, status_type: 'active' })
+      .update({ mobile_menu_keys: JSON.stringify(entry.mobileMenuKeys) });
+  }
+}
+
+export async function down(knex: Knex): Promise<void> {
+  for (const entry of SEED_MOBILE_MAPPING) {
+    await knex(tableName)
+      .where({ code: entry.code, status_type: 'active' })
+      .update({ mobile_menu_keys: JSON.stringify([]) });
+  }
+}
+```
+
+### Phase 5 Pre-Migration Checklist
+
+- [ ] User เคาะ mapping `feature_code → mobile_menu_keys` ก่อน implement M10
+- [ ] รัน M9 บน dev → verify column + GIN index มี
+- [ ] รัน M10 บน dev → verify SEED tier มี mobile_menu_keys ไม่ว่าง: `SELECT code, jsonb_array_length(mobile_menu_keys) FROM comp_features WHERE sort_order <= 4 ORDER BY sort_order`
+- [ ] Backup full database ก่อนรันบน production
+- [ ] รันบน staging → full QA cycle (combined parameterized tests Phase 5 W9)
+
+### Phase 5 Post-Migration Verification
+
+```sql
+-- 1. Column มีจริง + ข้อมูลเริ่มต้นถูก
+SELECT code, sort_order, jsonb_array_length(menu_keys) AS web_count, jsonb_array_length(mobile_menu_keys) AS mobile_count
+FROM comp_features
+ORDER BY sort_order;
+-- คาดหวัง: SEED tier (sort_order <= 4) → mobile_count > 0; CORE/PRO → mobile_count = 0
+
+-- 2. GIN index ใช้งานได้
+EXPLAIN ANALYZE
+SELECT id FROM comp_features
+WHERE mobile_menu_keys @> '["homepage.attendance.read"]'::jsonb;
+-- คาดหวัง: Bitmap Index Scan idx_comp_features_mobile_menu_keys_gin
+
+-- 3. Resolver mobile path คืน effective mobile menu keys
+-- (ใช้ companyFeature endpoint หรือ permissionResolver service ผ่าน unit test)
+```
+
+---
+
+## Phase 6 (Future) — Cleanup (เลื่อนจาก Phase 5 เดิม — 2026-05-06)
+
+หลังจาก deploy Phase 5 stable แล้ว Phase 6:
+
+- drop table `sale_dashboard_disabled_features`
+- drop table `const_packages` (เมื่อ confirm ว่า v1 caller ทุกตัวถูก migrate แล้ว)
+- drop column `comp_companies.add_ons` (jsonb) ที่ไม่ใช้แล้ว
 
 > ทั้ง 3 ตัวนี้แยกออกจาก scope หลักของงานนี้

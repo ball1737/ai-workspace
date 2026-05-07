@@ -182,9 +182,70 @@ owner: Lead
 
 ---
 
-## Phase 5: Cleanup (LATER — แยก scope)
+## Phase 5: Mobile Menu Parity (Added 2026-05-06)
 
-> ทำหลังจาก Phase 1-4 deploy stable แล้ว และ confirm ว่า v1 caller ไม่ active
+> Mirror ทั้ง storage + resolver + external auth + admin validation + UI สำหรับ `PermissionMobileDefault`
+> Plan reference: `/Users/ball/.claude/plans/lead-menu-elegant-finch.md` (Q1=D, Q2=A parallel column, Q3=B combined `{web,mobile}`, Q4=C side-by-side, Q5=A Page D mobile col, Q6=A Phase 5 mobile / Cleanup → Phase 6, Q7=A+B migration with SEED tier backfill, Q8=B parameterized tests)
+
+### Phase 5: Backend Track
+
+| ID | Task | Owner | Status | Doc Ref | Updated |
+|----|------|-------|--------|---------|---------|
+| FEAT-801 | Migration M9: ALTER `comp_features` ADD `mobile_menu_keys` JSONB NOT NULL DEFAULT `'[]'` + GIN index | Backend | pending | migration.md §Phase 5 M9 | |
+| FEAT-802 | Migration M10: data migration backfill SEED tier (4 features: basic_attendance, basic_leave, basic_reports, max_10_users) — mapping จาก `PermissionMobileDefault` (mapping confirm กับ user ก่อน implement) | Backend | pending | migration.md §Phase 5 M10 | |
+| FEAT-803 | Update model `compFeatures.model.ts` — เพิ่ม `mobileMenuKeys!: string[]` ใส่ใน `jsonAttributes` | Backend | pending | — | |
+| FEAT-804 | เพิ่ม helper `getAvailableMobileMenuKeys()` ใน `compPermission.ts` (อ่าน leaf paths จาก `PermissionMobileDefault`) | Backend | pending | — | |
+| FEAT-810 | feature.interface.ts: เพิ่ม `mobileMenuKeys: z.array(z.string()).default([])` ใน input/output Zod | Backend | done (2026-05-06) | — | |
+| FEAT-811 | feature.repository.ts: INSERT/UPDATE/SELECT include `mobile_menu_keys` | Backend | done (2026-05-06) | — | |
+| FEAT-812 | feature.service.ts + feature.adapter.ts: pass-through field + `validateMobileMenuKeys` (`INVALID_MOBILE_MENU_KEY` 400) | Backend | done (2026-05-06) | — | |
+| FEAT-813 | **BREAKING**: `getAvailableMenuKeysController` response shape `{web: string[], mobile: string[]}` (Q3=B) | Backend | done (2026-05-06) | ssd.md §Phase 5 endpoints | |
+| FEAT-820 | permissionResolver: `resolveCompanyEffectiveMobileMenuKeysService(companyId)` (mirror) | Backend | pending | — | |
+| FEAT-821 | permissionResolver: `filterPermissionMobileByMenuKeysService(jsonb, allowed)` | Backend | pending | — | |
+| FEAT-822 | permissionResolver: `extractMobileMenuKeysFromPermissionJsonbService` | Backend | pending | — | |
+| FEAT-823 | permissionResolver.repository: aggregate `mobile_menu_keys` จาก effective features (reuse `resolveCompanyEffectiveFeatureIdsService`) | Backend | pending | — | |
+| FEAT-824 | In-request cache extend mobile keys/permissions | Backend | pending | — | |
+| FEAT-830 | companyFeature.service: `getCompanyFeaturesController` ส่ง `effectiveMenuKeys`, `effectiveMobileMenuKeys`, `permission`, `permissionMobile` | Backend | pending | — | |
+| FEAT-840 | externalAuth `getPermissionsService`: filter ทั้ง `permission` + `permission_mobile` | Backend | pending | — | |
+| FEAT-841 | `/external/auth/v1/permissions/:userUuid` response เพิ่ม `permissionMobile` (graceful empty fallback per Phase 4 W1 pattern) | Backend | pending | — | |
+| FEAT-842 | `getEmployeePermissionService` (Phase 4 Fix 1) extend mobile path | Backend | pending | — | |
+| FEAT-850 | **BUG FIX (Phase 4 W2 oversight):** compPermission.service split validation — `permission` ↔ effective web menu keys, `permission_mobile` ↔ effective mobile menu keys | Backend | pending | — | |
+| FEAT-851 | Error code ใหม่ `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` (HTTP 400) | Backend | pending | — | |
+| FEAT-852 | Audit Phase 4 Fix 2-4 transitively: `getCompPermissionByUuidController` (deepMerge baseline), `/comp-permission/default`, owner STRICT — ให้ใช้ mobile filter ด้วย | Backend | pending | — | |
+
+### Phase 5: Frontend Track
+
+| ID | Task | Owner | Status | Doc Ref | Updated |
+|----|------|-------|--------|---------|---------|
+| FEAT-870 | Types: `sale-dashboard-feature-management.ts` Feature เพิ่ม `mobileMenuKeys: string[]`; `AvailableMenuKeysPayload` → `{web, mobile}` | Frontend | pending | — | |
+| FEAT-871 | Redux slice (action+reducer+saga+service) สำหรับ feature-management รองรับ field ใหม่ | Frontend | pending | — | |
+| FEAT-872 | Redux slice: company-features ขยาย response include `effectiveMobileMenuKeys` + `permissionMobile` | Frontend | pending | — | |
+| FEAT-880 | Component: `menu-keys-select.tsx` รองรับ side-by-side mode (รับ web/mobile options + values + callbacks แยก) | Frontend | pending | — | |
+| FEAT-881 | Component: `menu-tree-preview.tsx` รองรับ side-by-side display | Frontend | pending | — | |
+| FEAT-882 | `feature-form.tsx` render Web col + Mobile col คู่กัน | Frontend | pending | — | |
+| FEAT-883 | `feature-detail-view.tsx` render side-by-side preview | Frontend | pending | — | |
+| FEAT-890 | `package-effective-menus-preview.tsx` (Page D) render Web col + Mobile col | Frontend | pending | — | |
+| FEAT-891 | `company-feature-row.tsx` รับ `effectiveMobileMenuKeys` ที่เกี่ยวข้อง | Frontend | pending | — | |
+| FEAT-895 | i18n: เพิ่ม keys `webMenus`, `mobileMenus`, `availableWebMenuKeys`, `availableMobileMenuKeys` (en+th parity) | Frontend | pending | — | |
+
+### Phase 5: QA + Review + Closeout
+
+| ID | Task | Owner | Status | Doc Ref | Updated |
+|----|------|-------|--------|---------|---------|
+| FEAT-901 | QA: extend Phase 2 unit tests (combined parameterized web+mobile) | QA | pending | testcase.md §Phase 5 | |
+| FEAT-902 | QA: extend Phase 3 resolver tests cover mobile path (32 → parameterized) | QA | pending | — | |
+| FEAT-903 | QA: extend Phase 4 integration tests cover external auth permissionMobile + compPermission split-bug regression | QA | pending | — | |
+| FEAT-904 | QA: new test `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` 400 | QA | pending | — | |
+| FEAT-910 | Code Review pass (single after W1-W9) | Code Reviewer | pending | — | |
+| FEAT-911 | Code Review Fix Wave (if any) | Backend + Frontend | pending | — | |
+| FEAT-920 | BA validation Phase 5 | BA | pending | — | |
+| FEAT-921 | Push hw-be + hw-sale-cms branch `ball/feature/feature-management` | Lead | pending | — | |
+| FEAT-922 | Update `.ai-memory/current.md` — Active Feature Phase 5 closeout | Lead | pending | — | |
+
+---
+
+## Phase 6: Cleanup (เลื่อนจาก Phase 5 เดิม — 2026-05-06)
+
+> ทำหลังจาก Phase 1-5 deploy stable แล้ว และ confirm ว่า v1 caller ไม่ active
 
 | ID | Task | Owner | Status | Doc Ref | Updated |
 |----|------|-------|--------|---------|---------|

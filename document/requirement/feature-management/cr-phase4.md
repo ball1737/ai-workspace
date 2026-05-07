@@ -210,3 +210,32 @@ Concurrent race (company toggles feature off while save is in-flight): the P4.4 
 5. L2 (`z.any()` → `z.unknown()`) — low risk, can batch with next Zod schema change.
 
 **Final verdict after H1+H2 fixes: READY for BA.**
+
+---
+
+## Phase 5 W5 — Post-CR BUG FIX (2026-05-06)
+
+### Bug summary
+
+Phase 4 P4.4 helper `assertPermissionKeysWithinCompanyMenusService` รวม leaf keys ของทั้ง `permission` (web) + `permission_mobile` (mobile) เข้าด้วยกัน แล้ว validate ผ่าน effective **web** menu keys อันเดียว — wrong namespace สำหรับ mobile path. CR Phase 4 §Praise §200 เคย note ว่า "validates both web and mobile JSONB in a single helper with deduplication" → ตอนนั้นยังไม่มี mobile namespace แยก (Wave 3 ยังไม่ได้ implement) จึง pass review. หลังจาก Phase 5 Wave 3 + Wave 4 implement mobile resolver path → bug surface: mobile keys ไม่ตรงกับ web namespace → admin save mobile permission ถูก reject 400 ทุกครั้ง (หรือ pass เพราะบังเอิญ key ชื่อตรง — แต่ save ผิด context).
+
+### Fix scope (Phase 5 Wave 5 — P5.5.1..P5.5.5)
+
+| File | Fix |
+|------|-----|
+| `src/modules/v1/admin/compPermission/compPermission.service.ts` | Split helper เป็น 2 path independent: web ผ่าน `extractMenuKeys`+`resolveCompanyEffectiveMenuKeysService`, mobile ผ่าน `extractMobileMenuKeys`+`resolveCompanyEffectiveMobileMenuKeysService`. `getCompPermissionByUuidService` filter `permissionMobile` ผ่าน mobile filter+keys (เดิมใช้ web ผิด). New error code `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` (400) distinct จาก web. |
+| `src/api/v1/admin/compPermission/compPermission.controller.ts` | `getCompPermissionByUuidController` filter `PermissionMobileDefault` baseline ผ่าน mobile filter+keys (เดิมใช้ web ทั้ง 2 baseline). `getCompPermissionDefaultListController` เปลี่ยนเดียวกัน. Cache shared (`Promise.all` parallel resolve) → mobile hit `featureIds`+`packageId` cache (saved 2 batch DB calls). |
+
+### Backward compat impact
+
+- Mobile validation = NEW path → old clients ที่ไม่ส่ง `permission_mobile` ไม่กระทบ
+- Mobile validation strict — old saves ที่มี invalid mobile keys (ก่อน Wave 5) จะ reject 400 → intended (bug correction)
+- Web error code unchanged — clients ที่จัดการ `INVALID_MENU_KEY_FOR_COMPANY` คงเดิม
+- New error code `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` distinct → frontend Wave 6 จะ surface แยก toast
+
+### Verification
+
+- TS pass + prettier conformant
+- Grep: `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` defined + thrown ใน service.ts
+- Grep: `extractMobileMenuKeysFromPermissionJsonbService` + `resolveCompanyEffectiveMobileMenuKeysService` + `filterPermissionMobileByMenuKeysService` import + use ใน service + controller
+- Q-A=STRICT propagated to mobile path — `getCompPermissionByUuidController` baseline-filter-before-deepMerge pattern คงไว้ทั้ง web + mobile

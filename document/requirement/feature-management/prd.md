@@ -163,6 +163,7 @@ status: draft
 - Forms ใช้ React Hook Form + Yup
 - Multilingual fields = paired TH/EN inputs (component `multilingual-text-field.tsx`)
 - Menu selection = tree-style multi-select (group by main category)
+- **Web | Mobile namespace selection (Phase 5 Wave 7):** Feature CRUD form + detail render `Web` and `Mobile` columns side-by-side (MUI Grid `xs=12 md=6`). Each column has independent search input, grouped checkbox tree, error message, and empty state. Headers carry icon (monitor for Web, smartphone for Mobile) + label + count badge. Form submit sends both `menuKeys` (web) and `mobileMenuKeys` (mobile) to backend.
 - Source badge = colored chip (Package/Addon/Override-enabled/Override-disabled/Default)
 - Confirm dialog เมื่อ delete หรือ toggle (with optional reason field)
 
@@ -174,7 +175,8 @@ status: draft
 ### Mobile / responsive
 - CMS แสดงผลบน desktop เป็นหลัก (super_admin ใช้งานบน laptop)
 - Tablet: ใช้งานได้ในระดับ list view + form
-- Mobile: ไม่ใช่ priority ในงานนี้
+- Mobile: ไม่ใช่ priority ของ CMS user — แต่ Feature/Detail Web|Mobile columns stack เป็นแนวตั้ง (xs=12) เมื่อ viewport แคบ เพื่อรองรับ tablet portrait
+- **Note (terminology):** "Mobile" ใน "Web|Mobile columns" คือ namespace ของ end-user mobile app (HappyWork mobile permissions) — ไม่ใช่ responsive breakpoint ของ CMS เอง
 
 ## 6. Business Rules (กฏทางธุรกิจ)
 

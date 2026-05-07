@@ -11,7 +11,18 @@
 
 **Type:** long-term
 
-**Status:** Phase 4 **COMPLETE** — BA verdict PASS-with-notes (0 critical / 3 non-critical defer-able). Pushed to `origin/ball/feature/feature-management` hw-be (`bffc2dbf`) (2026-05-06). Phase 3 closed earlier same day (hw-be `2bf92292`/`07ea4edc`/`8c07ef3e` + hw-sale-cms `b76fb1e`/`eabc560`). Pending Phase 5 (Cleanup — drop legacy v1 featureManagement etc.) — แยก scope, ทำหลัง deploy stable.
+**Status:** Phase 5 **COMPLETE** (2026-05-07) — BA verdict PASS-with-notes (0 critical / 4 non-critical defer-able). Pushed to `origin/ball/feature/feature-management` hw-be (`fdb79869` snap + `467b395d` CR fix) + hw-sale-cms (`3676e46`). Phase 4 closed 2026-05-06 (hw-be `bffc2dbf`). Phase 3 closed 2026-05-06.
+
+**Phase 5 implementation (Mobile Menu Parity):** User แจ้ง "ลืม" จาก Phase 1-4 = `PermissionMobileDefault` ใน `compPermission.ts` ไม่ถูก wire กับ feature management. ทำครบ 11 waves: W1 schema+helper / W2 Feature CRUD / W3 resolver mobile path / W4 external auth + user-info / W5 compPermission BUG fix + mobile validate / W6-W8 FE redux+UI Web|Mobile cols / W9 QA parameterized 135/135 PASS / W10 CR PASS-with-fixes (1H+3M+3L) / CR Fix Wave 5/7 (skip M3+L1+L3) / W11 BA + push.
+
+- Plan file: `/Users/ball/.claude/plans/lead-menu-elegant-finch.md`
+- Decisions resolved Q1-Q8: Q1=D full mirror, Q2=A parallel col, Q3=B `{web,mobile}` BREAKING, Q4=C side-by-side, Q5=A Page D mobile, Q7=A+B M9+M10 SEED backfill, Q8=B parameterized tests
+- Mapping confirmed: basic_attendance→[homepage.attendance, timeAttendance.myReport]; basic_leave→[homepage.request, homepage.myRequest, homepage.calendar]; basic_reports→[timeAttendance.teamReport]; max_10_users→[]
+- Phase 4 W2 BUG fixed in W5: split web/mobile validation distinct error codes
+- 205+ tests pass (Phase 1-5 cumulative); 1 pre-existing failure unrelated (responseFormatter import in feature-management.integration.spec.ts)
+- ⚠ **Migration M9+M10 ต้องรัน `pnpm db:migrate:latest` บน dev DB ก่อน deploy code นี้**
+
+**Phase 6 (Cleanup — เลื่อนจาก Phase 5 เดิม):** drop v1 featureManagement / sale_dashboard_disabled_features / featureDefinitions / const_packages — ทำหลัง Phase 5 deploy stable.
 
 **Started:** 2026-05-04
 
@@ -155,6 +166,7 @@ _(จะถูกอัพเดตอัตโนมัติโดย Lead เ
 
 | Date       | Agent     | Action                                                                                                |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| 2026-05-06 | Lead      | Phase 5 plan approved — Mobile Menu Parity (8 Q resolved, 11 waves); Cleanup เลื่อน Phase 6; doc updates: requirement.md FR-Mobile-1..7, task-list.md FEAT-801..922, checklist.md P5.x.x, migration.md M9+M10, summary.md |
 | 2026-05-06 | Lead      | Phase 3 closeout — pushed hw-be `2bf92292` + hw-sale-cms `b76fb1e`; BA PASS-with-notes; 75/75 tests PASS |
 | 2026-05-06 | BA        | BA validation Phase 3 — PASS-with-notes (0 crit / 3 non-crit); FR-4/FR-5 ครบ, Q3+Q4+Q9 verified, CR fixes verified, DEF-001 closed false-positive |
 | 2026-05-06 | QA        | Phase 3 tests — 75/75 PASS (companyFeature 26 + permissionResolver 32 + integration 17); flagged DEF-001 (later verified false-positive) |

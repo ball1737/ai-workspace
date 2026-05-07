@@ -783,28 +783,301 @@ status: draft
 
 ---
 
+## Phase 5: Mobile Menu Parity (Added 2026-05-06)
+
+> Mirror PermissionMobileDefault end-to-end. Plan: `/Users/ball/.claude/plans/lead-menu-elegant-finch.md`. Cleanup เลื่อนเป็น Phase 6.
+
+### Phase 5 Wave 1: Schema + Helper (Backend)
+
+- [x] **P5.1.1** สร้าง migration M9 — `happywork-backend/src/database/postgresql/migrations/data/20260506-1800-alter-comp_features-add-mobile_menu_keys.ts` <!-- done: 2026-05-06 -->
+  - [x] up: ALTER TABLE comp_features ADD mobile_menu_keys JSONB NOT NULL DEFAULT '[]'::jsonb
+  - [x] up: CREATE INDEX idx_comp_features_mobile_menu_keys_gin ... USING GIN (mobile_menu_keys)
+  - [x] down: DROP INDEX + DROP COLUMN
+  - [ ] verify: รัน migrate → column + GIN index มีจริง _(deferred — DB shared, Lead/DevOps จะรันเอง)_
+- [x] **P5.1.2** Confirm mapping mobile_menu_keys ของ SEED tier 4 features กับ user (basic_attendance / basic_leave / basic_reports / max_10_users) ก่อน implement M10 <!-- done: 2026-05-06 — user-confirmed Q7=A+B mapping -->
+- [x] **P5.1.3** สร้าง migration M10 — `20260506-1801-backfill-comp_features-mobile_menu_keys-seed.ts` (data migration backfill SEED tier ตาม mapping; idempotent ผ่าน `WHERE code = ? AND status_type = 'active'`) <!-- done: 2026-05-06 -->
+- [x] **P5.1.4** Update model — `happywork-backend/src/database/postgresql/models/data/compFeatures.model.ts` เพิ่ม `mobileMenuKeys!: string[]` ใส่ใน `jsonAttributes` (+ jsonSchema entry) <!-- done: 2026-05-06 -->
+- [x] **P5.1.5** เพิ่ม helper `getAvailableMobileMenuKeys()` ใน `happywork-backend/src/constant/compPermission.ts` — refactor walker เป็น parameterized ACTION_KEYS (web=5 / mobile=4 ไม่มี export); อ่าน leaf paths จาก `PermissionMobileDefault` (Dev/Prod variants ผ่าน env-aware export ที่มีอยู่แล้ว) <!-- done: 2026-05-06 -->
+
+### Phase 5 Wave 2: Feature CRUD extension (Backend)
+
+- [x] **P5.2.1** `happywork-backend/src/modules/v2/sale-dashboard/feature/feature.interface.ts` เพิ่ม `mobileMenuKeys: z.array(z.string()).default([])` ใน input/output Zod <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `mobileMenuKeys` ใน `featureBaseSchema` (default `[]` → optional via `partial()` ใน updateFeatureSchema)
+  - [x] เพิ่ม `mobileMenuKeys: readonly string[]` ใน `Feature`, `CreateFeatureRepositoryInput`, `UpdateFeatureRepositoryInput`
+  - [x] เพิ่ม `menuKeysAvailableResponseSchema` + `MenuKeysAvailableResponse` type `{ web, mobile }` (breaking — ห้าม keep `menuKeys` legacy)
+- [x] **P5.2.2** `feature.repository.ts` INSERT/UPDATE/SELECT include `mobile_menu_keys` <!-- done: 2026-05-06 -->
+  - [x] `createFeatureRepository` insert `mobileMenuKeys: [...input.mobileMenuKeys]`
+  - [x] `updateFeatureRepository` patch `mobileMenuKeys` only if `!== undefined` (preserve partial-update semantics)
+  - [x] SELECT path: Objection auto-includes all columns ผ่าน model jsonAttributes — ไม่ต้องแก้ `buildBaseQuery`/`findById`/`findOne`
+- [x] **P5.2.3** `feature.service.ts` + `feature.adapter.ts` pass-through field <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `validateMobileMenuKeys` helper (mirror `validateMenuKeys`); ใช้ `getAvailableMobileMenuKeys()` + error code `INVALID_MOBILE_MENU_KEY` (P5.2.5)
+  - [x] `createFeatureService` call `validateMobileMenuKeys(input.mobileMenuKeys)` ก่อน insert
+  - [x] `updateFeatureService` call `validateMobileMenuKeys` ถ้า `input.mobileMenuKeys !== undefined`
+  - [x] `convertFeatureToResponse` (adapter) map `row.mobileMenuKeys` → `mobileMenuKeys` (defensive `Array.isArray` guard)
+- [x] **P5.2.4** **BREAKING:** `feature.controller.ts` `getAvailableMenuKeysController` response shape เปลี่ยนเป็น `{web: string[], mobile: string[]}` (Q3=B) <!-- done: 2026-05-06 -->
+  - [x] `getAvailableMenuKeysService` returns `{ web: getAvailableMenuKeys(), mobile: getAvailableMobileMenuKeys() }`
+  - [x] Controller passes service result through directly (no wrap in `{ menuKeys }`)
+- [x] **P5.2.5** Validate mobile_menu_keys ทุก key อยู่ใน `getAvailableMobileMenuKeys()` (reject 400 ถ้าไม่ใช่) <!-- done: 2026-05-06 -->
+  - [x] Error code `INVALID_MOBILE_MENU_KEY` (distinct from web `INVALID_MENU_KEY` — frontend Wave 6 จะ surface แยก field)
+  - [x] Error payload includes `{ invalidKeys: [...] }` array สำหรับ UX feedback
+
+### Phase 5 Wave 3: Permission Resolver (Backend)
+
+- [x] **P5.3.1** `happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts` — `resolveCompanyEffectiveMobileMenuKeysService(companyId)` mirror <!-- done: 2026-05-06 -->
+  - [x] Reuse `resolveCompanyEffectiveFeatureIdsService` (memoized) → ไม่ duplicate package/addon/override pipeline
+  - [x] Cache key `mobileMenuKeys:{companyId}` ผ่าน `ResolverCache` (กัน duplicate call ภายใน request เดียว)
+- [x] **P5.3.2** `filterPermissionMobileByMenuKeysService(jsonb, allowed)` mirror <!-- done: 2026-05-06 -->
+  - [x] Delegate to `filterPermissionByMenuKeysService` — walker action-key-set-agnostic (mobile leaves เป็น subset ของ web ACTION_KEYS)
+  - [x] Caller-readability: separate function exported (caller อ่านชัดว่าเป็น mobile flow)
+- [x] **P5.3.3** `extractMobileMenuKeysFromPermissionJsonbService(jsonb)` mirror <!-- done: 2026-05-06 -->
+  - [x] Delegate to `extractMenuKeysFromPermissionJsonbService` (ดู P5.3.2 rationale)
+- [x] **P5.3.4** `permissionResolver.repository.ts` aggregate `mobile_menu_keys` จาก effective features (reuse `resolveCompanyEffectiveFeatureIdsService`) <!-- done: 2026-05-06 -->
+  - [x] `getFeatureMobileMenuKeysRepository(featureIds[])` — pre-fetch + LATERAL `jsonb_array_elements_text(f.mobile_menu_keys)` + `WHERE IN`
+  - [x] M2-style guard: `jsonb_typeof(f.mobile_menu_keys) = 'array'` กัน corrupt jsonb crash
+  - [x] Filter `feature.status_type='active'` (Q4=B mirror ของ web counterpart)
+- [x] **P5.3.5** In-request cache extend ให้รวม mobile keys + filtered mobile permission <!-- done: 2026-05-06 -->
+  - [x] `permissionResolver.interface.ts` JSDoc — append `mobileMenuKeys:{companyId}` + `packageId:{companyId}` ใน cache keys list
+  - [x] `MOBILE_MENU_KEYS_KEY` constant ใน service (mirror `MENU_KEYS_KEY`)
+  - [x] No N+1: `getFeatureMobileMenuKeysRepository` ถูก call 1 ครั้ง/resolver invocation; cache hit `mobileMenuKeys:{companyId}` → 0 call
+
+### Phase 5 Wave 4: External Auth (Backend)
+
+- [x] **P5.4.1** `happywork-backend/src/modules/v1/externalAuth/permissions.service.ts` — `getPermissionsService` filter ทั้ง `permission` + `permission_mobile` <!-- done: 2026-05-06 -->
+  - [x] เพิ่ม `resolveUserEffectivePermissionMobileService` ใน resolver (mirror web — รับ optional `cache?: ResolverCache`); reuse `getUserPermissionJsonbRepository`
+  - [x] Cache shared (single `Map`) ระหว่าง web + mobile call → `featureIds:{companyId}` + `packageId:{companyId}` hit cache; mobile path เพิ่มแค่ batch `getFeatureMobileMenuKeysRepository` 1 call
+  - [x] PERMISSION_DATA_NOT_FOUND graceful → `permissionMobile = {}`; PERMISSION_DATA_CORRUPTED → propagate
+- [x] **P5.4.2** `/api/external/auth/v1/permissions/:userUuid` response เพิ่ม `permissionMobile` (Phase 4 W1 pattern — empty `{}` graceful, NOT skeleton; consistency กับ web `permission` field) <!-- done: 2026-05-06 -->
+  - [x] `permissions.interface.ts` — `PermissionsResponse.permissionMobile: Record<string, unknown>` additive (backward compat)
+  - [x] Override checklist text: ใช้ `{}` graceful per task spec consistency note (Phase 4 W1 pattern); reasoning: skeleton-with-false จะ surface UI ที่ไม่ effective — `{}` ตรงกับ Q-C policy
+  - [x] Controller untouched — response shape extends ผ่าน return type
+  - [x] Repository extend: `getUserPermissionJsonbRepository` select `cp.permission_mobile` ด้วยใน round trip เดียว → `UserPermissionRow.permissionMobileJsonb: PermissionJsonb | null`
+- [x] **P5.4.3** `getEmployeePermissionService` (Phase 4 Fix 1 ที่ `compPermissionMapping.service.ts`) extend mobile path <!-- done: 2026-05-06 -->
+  - [x] BUG FIX: เดิม mobile branch ใช้ `filterPermissionByMenuKeysService` + web `allowedKeys` ทับ mobile baseline → ผิด → เปลี่ยนเป็น `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys`
+  - [x] เพิ่ม `resolveCompanyEffectiveMobileMenuKeysService` call (parallel กับ web ผ่าน `Promise.all` — shared cache → mobile call hit `featureIds`+`packageId` cache, เพิ่มแค่ batch mobile_menu_keys lookup)
+  - [x] Q-A=STRICT enforced ใน mobile path เช่นเดียวกับ web — owner ไม่ bypass filter (baseline filter ก่อน deepMerge)
+  - [x] Post-merge re-filter pass mirror web (Q-C=no-migration policy) — ใช้ `allowedMobileKeys` ที่ resolved แล้ว, ไม่เรียก resolver ซ้ำ
+- [x] **Test update** `tests/unit/externalAuth/permissions.service.test.ts` — 7 cases covering both branches + cache-share assertion <!-- done: 2026-05-06 -->
+
+### Phase 5 Wave 5: compPermission admin BUG FIX + mobile validation (Backend)
+
+- [x] **P5.5.1** `happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts` — split validation: <!-- done: 2026-05-06 -->
+  - [x] `permission` JSONB → validate ผ่าน effective web menu keys (เดิม)
+  - [x] `permission_mobile` JSONB → validate ผ่าน effective **mobile** menu keys (FIX BUG)
+  - [x] BUG FIX: `assertPermissionKeysWithinCompanyMenusService` เดิมรวม keys ของ web + mobile แล้ว validate ผ่าน effective web menu keys อันเดียว → admin save mobile permission ที่มี mobile keys → reject 400 invalid key (หรือถ้า key ชื่อบังเอิญตรง → save ผ่านแต่ผิด context); ตอนนี้ split 2 path independent + cache shared
+  - [x] Early-return optimization (CR M1) คงไว้ทั้ง 2 path — empty `{}` ไม่เรียก resolver
+  - [x] catch handler ทั้ง create + update preserve `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` ด้วย
+- [x] **P5.5.2** เพิ่ม error code `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` (HTTP 400) <!-- done: 2026-05-06 -->
+  - [x] ใช้ `errorBadRequest()` กับ `data.invalidKeys` list (mirror web counterpart)
+  - [x] Distinct error code (ไม่ใช่ same as `INVALID_MENU_KEY_FOR_COMPANY`) — frontend แยก toast/inline message ได้
+- [x] **P5.5.3** Audit `getCompPermissionByUuidController` (deepMerge baseline) — ใช้ mobile filter ด้วย <!-- done: 2026-05-06 -->
+  - [x] Service `getCompPermissionByUuidService` filter `permissionMobile` ผ่าน `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (เดิมใช้ web `allowedKeys` ผิด namespace) — `Promise.all` parallel resolve
+  - [x] Controller `getCompPermissionByUuidController` filter `PermissionMobileDefault` baseline ผ่าน mobile filter + mobile keys (เดิมใช้ web `allowedKeys` ทั้ง 2 baseline) — cache shared
+- [x] **P5.5.4** Audit `/comp-permission/default?companyUuid=` — ใช้ mobile filter ด้วย <!-- done: 2026-05-06 -->
+  - [x] `getCompPermissionDefaultListController` resolve ทั้ง web + mobile menu keys (parallel ผ่าน `Promise.all`, shared cache → mobile hit `featureIds`+`packageId` cache)
+  - [x] filter `PermissionDefault` ผ่าน web keys, filter `PermissionMobileDefault` ผ่าน mobile keys (shape `{permission, permissionMobile}` คงเดิม — ไม่ break)
+- [x] **P5.5.5** Audit owner STRICT — propagate ไป mobile path <!-- done: 2026-05-06 -->
+  - [x] ทุก mobile filter call ใน Wave 5 ใช้ baseline-filter-before-deepMerge pattern (เหมือน W3.5/W4) → owner=true ไม่ bypass effective menu filter — Q-A=STRICT enforced ใน mobile namespace แล้ว
+  - [x] `getEmployeePermissionService` (W4 ทำแล้ว — covered transitively); `getCompPermissionByUuidController` (Wave 5 W5 fix); `/comp-permission/default` (Wave 5 W5 fix); pre-save validation (Wave 5 W5 fix) — **ครบทุก endpoint ที่แตะ mobile namespace**
+
+### Phase 5 Wave 6: Type + Redux + Service (Frontend)
+
+- [x] **P5.6.1** `happywork-sale-cms/src/types/store/sale-dashboard-feature-management.ts` — Feature type เพิ่ม `mobileMenuKeys: string[]`; `AvailableMenuKeysPayload` → `{web: string[], mobile: string[]}` <!-- done: 2026-05-06 -->
+  - [x] `Feature` type field `mobileMenuKeys: string[]` (additive — non-optional; backend defaults `[]` for legacy rows)
+  - [x] `CreateFeatureRequest.mobileMenuKeys?: string[]` optional (backend defaults `[]`); `UpdateFeatureRequest.data.mobileMenuKeys?: string[]`
+  - [x] **BREAKING (Q3=B)** renamed `AvailableMenuKeysResponse` → `AvailableMenuKeysPayload` with `{web: string[]; mobile: string[]}` shape
+  - [x] Root state slot `availableMenuKeys: AvailableMenuKeysPayload` (was `string[]`)
+- [x] **P5.6.2** Redux slice (action + reducer + saga + service) sale-dashboard-feature-management รองรับ field ใหม่ <!-- done: 2026-05-06 -->
+  - [x] Reducer initial state `availableMenuKeys: { web: [], mobile: [] }`
+  - [x] `sdGetAvailableMenuKeysSuccess` handler maps backend `{web, mobile}` envelope (defensive `Array.isArray` per namespace)
+  - [x] Action types unchanged (payload shape extends via TS only)
+  - [x] Saga unchanged (response.data passes through to reducer; service `getAvailableMenuKeysRequest` JSDoc updated)
+  - [x] Hook `useSaleDashboardFeatureManagement` return type auto-updates via state slot — `useCallback` dispatcher refs already wrapped (Phase 2 max-depth bug pattern preserved)
+  - [x] **Caller breakage (Wave 7 will fix):** 5 sites consuming `availableMenuKeys` as flat `string[]` were patched with `availableMenuKeys.web` bridge + Wave 7/8 TODO comment to keep TS clean and pre-Wave-6 Web-only behavior intact:
+    - `src/sections/feature-management/feature-create-view.tsx` (FeatureForm prop) — Wave 7 P5.7.3
+    - `src/sections/feature-management/feature-edit-view.tsx` (FeatureForm prop) — Wave 7 P5.7.3
+    - `src/sections/feature-management/feature-detail-view.tsx` (MenuTreePreview prop) — Wave 7 P5.7.4
+    - `src/sections/feature-management/components/feature-form.tsx` (consumes prop downstream — type unchanged at component boundary; Wave 7 P5.7.3 will add `webMenuKeys`/`mobileMenuKeys` props)
+    - `src/sections/package-management/components/package-effective-menus-preview.tsx` (MenuTreePreview prop + length check) — Wave 8 P5.8.1 (Page D side-by-side); current Page B preview surfaces only Web for now
+  - [x] `src/sections/feature-management/utils/feature-form.ts` Yup schema option `availableMenuKeys?: string[]` unchanged at boundary (callers already filter to a flat list before passing) — Wave 7 will refactor when Mobile col added
+- [ ] **P5.6.3** Redux slice company-features ขยาย response include `effectiveMobileMenuKeys` + `permissionMobile` — **deferred to Wave 8**: backend `companyFeature` endpoint ยังไม่ extend mobile (Wave 4 ขยาย `/external/auth/permissions` + `/auth/user-info` แต่ companyFeature endpoint แยก), so FE slice ไม่มี field ให้ sync; Wave 8 จะ pickup เมื่อ backend extend companyFeature endpoint หรือ Page D ต้องการแสดง mobile column
+
+### Phase 5 Wave 7: Feature CRUD UI (Page A — Frontend)
+
+- [x] **P5.7.1** `src/components/feature-management/menu-keys-select.tsx` รองรับ side-by-side mode (discriminated union `mode: "single" | "split"`) <!-- done: 2026-05-06 -->
+  - [x] Internal `MenuKeysColumn` extracted (search + grouped checkbox tree) ใช้ร่วมทั้ง 2 modes
+  - [x] `mode="split"` รับ `webOptions/webValue/onWebChange/webLabel/webError/webHelperText` + mobile counterparts; render `Grid xs=12 md=6` 2 columns
+  - [x] `mode="single"` (default) คง backward compat — ไม่มี caller อื่นใน sale-cms (single caller = `feature-form.tsx` migrated)
+  - [x] Empty state per column ใช้ i18n keys `featureManagement.menu_keys.no_web_available` / `no_mobile_available`
+- [x] **P5.7.2** `src/components/feature-management/menu-tree-preview.tsx` รองรับ side-by-side display (discriminated union `mode: "single" | "split"`) <!-- done: 2026-05-06 -->
+  - [x] Internal `MenuTreeColumn` extracted (group by category, show enabled leaves only) ใช้ร่วมทั้ง 2 modes
+  - [x] `mode="split"` รับ `webMenuKeys/mobileMenuKeys` + optional `webAvailableKeys/mobileAvailableKeys` (ใช้ filter visible groups) + per-side `emptyMessage`/`label`
+  - [x] Header per column = label + count (เช่น "Web Menus (3)") + iconify monitor/smartphone icon
+  - [x] `mode="single"` (default) คง backward compat สำหรับ Wave 8 caller `package-effective-menus-preview.tsx` (ยังใช้ Wave 6 bridge `availableMenuKeys.web`)
+- [x] **P5.7.3** `src/sections/feature-management/components/feature-form.tsx` render Web col + Mobile col <!-- done: 2026-05-06 -->
+  - [x] `Props.availableMenuKeys` type changed `string[]` → `AvailableMenuKeysPayload` (Q3=B breaking — caller migration in P5.7.6/P5.7.7)
+  - [x] `createFeatureSchema` รับ option ใหม่ `availableMobileMenuKeys` + Yup test `mobile-menu-keys-valid` (error key `featureManagement.validation.mobile_menu_keys_invalid`)
+  - [x] Section "menu_keys" render `<MenuKeysSelect mode="split">` ผ่าน nested Controller (ใส่ `name="menuKeys"` outer + `name="mobileMenuKeys"` inner; เก็บ field.onChange ตรงๆ ไม่ wrap useCallback)
+  - [x] Error surface: `errors.menuKeys.message` → `webError`; `errors.mobileMenuKeys.message` → `mobileError` — distinct
+- [x] **P5.7.4** `src/sections/feature-management/feature-detail-view.tsx` render side-by-side preview <!-- done: 2026-05-06 -->
+  - [x] Drop Wave 6 bridge TODO comment + เปลี่ยน `<MenuTreePreview>` ใช้ `mode="split"` รับ `webMenuKeys={detail.menuKeys}` + `mobileMenuKeys={detail.mobileMenuKeys ?? []}` + per-side `webAvailableKeys/mobileAvailableKeys` + `webEmptyMessage/mobileEmptyMessage`
+- [x] **P5.7.5** i18n: เพิ่ม keys `web_menu_keys`, `mobile_menu_keys`, helpers, validation, empty states (en+th parity, follow sale-cms snake_case nested convention) <!-- done: 2026-05-06 -->
+  - [x] `featureManagement.section.{web_menu_keys, mobile_menu_keys}`
+  - [x] `featureManagement.form.{web_menu_keys, web_menu_keys_helper, mobile_menu_keys, mobile_menu_keys_helper}`
+  - [x] `featureManagement.menu_keys.{web_empty, mobile_empty, no_web_available, no_mobile_available}`
+  - [x] `featureManagement.validation.mobile_menu_keys_invalid` + reword `menu_keys_invalid` → "web menu key is invalid" (distinct error message per namespace)
+  - [x] Q4=Open resolved: chose nested `web_menu_keys` / `mobile_menu_keys` (snake_case) consistent with existing `featureManagement.form.menu_keys` convention; rejected `webMenus`/`mobileMenus` flat camelCase form
+  - [x] EN + TH parity verified: `featureManagement` key count = 64/64
+- [x] **P5.7.6** Wave 6 bridge cleanup ใน `feature-create-view.tsx` + `feature-edit-view.tsx` — drop `availableMenuKeys.web` selector + ส่ง `availableMenuKeys` whole object ลง `<FeatureForm>` (TODO Wave 7 comments removed) <!-- done: 2026-05-06 -->
+- [x] **P5.7.7** `src/sections/feature-management/utils/feature-form.ts` — Form types/defaults/Yup/payload builders ขยาย `mobileMenuKeys: string[]` <!-- done: 2026-05-06 -->
+  - [x] `FeatureFormData.mobileMenuKeys: string[]`; `DEFAULT_FEATURE_FORM_VALUES.mobileMenuKeys = []`
+  - [x] `mapFeatureToFormValues` map `feature.mobileMenuKeys ?? []`
+  - [x] `buildCreateFeaturePayload` + `buildUpdateFeaturePayload` send `mobileMenuKeys: data.mobileMenuKeys ?? []`
+  - [x] `createFeatureSchema` รับ optional `availableMobileMenuKeys?: string[]`; mobile array test mirrors web
+- [x] **P5.7.V** Verification — TS clean (`npx tsc --noEmit`) + prettier conformant + i18n parity 64/64 + grep no Wave 7 TODOs left in feature-management section <!-- done: 2026-05-06 -->
+
+### Phase 5 Wave 8: Page D Company Features Tab (Backend extension + Frontend) <!-- done: 2026-05-06 -->
+
+> Lead approval 2026-05-06: Wave 8 includes BE extension because Page D's mobile column has no data otherwise. Decision (Q-shape resolved): per-row `menuKeys`+`mobileMenuKeys` (additive on `CompanyFeatureItem`) **plus** top-level `effectiveMenuKeys`+`effectiveMobileMenuKeys` aggregate sets — flexible for both row-level affordances and aggregate side-by-side preview. Backward compat: pre-Wave-8 callers reading `data.list` still work.
+
+- [x] **P5.8.BE.1** Backend `companyFeature.interface.ts` extend `CompanyFeatureItem` with `menuKeys: readonly string[]` + `mobileMenuKeys: readonly string[]`; extend `CompanyFeatureListResponse` with `effectiveMenuKeys` + `effectiveMobileMenuKeys` aggregate fields <!-- done: 2026-05-06 -->
+- [x] **P5.8.BE.2** Backend `companyFeature.adapter.ts` — `computeCompanyFeatureItem` extract `feature.menuKeys` + `feature.mobileMenuKeys` per row (defensive `Array.isArray`) <!-- done: 2026-05-06 -->
+- [x] **P5.8.BE.3** Backend `companyFeature.service.getCompanyFeaturesService` — change return type to `CompanyFeatureListResponse`; resolve effective menu keys via `resolveCompanyEffectiveMenuKeysService` + `resolveCompanyEffectiveMobileMenuKeysService` (shared `ResolverCache` Map → 2 batch DB calls only); sort sets for stable response <!-- done: 2026-05-06 -->
+- [x] **P5.8.BE.4** Backend `companyFeature.controller.getCompanyFeaturesController` — pass full envelope through `res.success(result, ...)` (drop `{ list }` wrap) <!-- done: 2026-05-06 -->
+- [x] **P5.8.1** `src/sections/client-management/feature-tab/components/company-effective-menus-preview.tsx` (NEW) render Web col + Mobile col via `<MenuTreePreview mode="split">` reading from slice's `effectiveMenuKeys`/`effectiveMobileMenuKeys`; uses `availableMenuKeys.{web,mobile}` for namespace catalog filtering — mounted in `company-features-tab-view.tsx` after the feature list <!-- done: 2026-05-06 -->
+  - Decision: created **new** Page-D-specific component instead of refactoring `package-management/components/package-effective-menus-preview.tsx` (Page B preview reads per-PACKAGE state via `useSaleDashboardPackageManagement`; Page D reads per-COMPANY via `useSaleDashboardCompanyFeatures`). Page B preview keeps single-mode (Wave 6 bridge stable for Web-only Phase B preview).
+- [x] **P5.8.2** `src/sections/client-management/feature-tab/components/company-feature-row.tsx` — render per-row Web/Mobile menu count chips (icon + count) wrapped in tooltip "Unlocks N web / M mobile menus"; defensive `?? 0` so pre-Wave-8 backend payload doesn't break the row <!-- done: 2026-05-06 -->
+- [x] **P5.8.3** Redux slice (P5.6.3 deferred from Wave 6) — extend `CompanyFeatureItem` type with optional `menuKeys?` + `mobileMenuKeys?`; extend Root state with `effectiveMenuKeys: string[]` + `effectiveMobileMenuKeys: string[]`; `sdGetCompanyFeaturesSuccess` reducer populates new fields with `Array.isArray` defensive guard; hook `useSaleDashboardCompanyFeatures()` exposes new fields via state spread <!-- done: 2026-05-06 -->
+- [x] **P5.8.4** i18n — added 5 keys under `companyFeatures.*` (en+th parity 42/42): `effective_menus.{title, subtitle, web_empty, mobile_empty}` + `row.menu_keys_tooltip` (interpolated `{{web}}`/`{{mobile}}`) <!-- done: 2026-05-06 -->
+- [x] **P5.8.V** Verification — TS clean (BE + sale-cms `npx tsc --noEmit` 0 errors); prettier conformant on all 11 modified files; en/th `companyFeatures` parity 42/42; no Wave 6 bridge TODOs left in feature-tab section <!-- done: 2026-05-06 -->
+
+### Phase 5 Wave 9: QA Combined Parameterized Tests
+
+- [ ] **P5.9.1** Extend Phase 2 unit tests cover mobile_menu_keys (combined parameterized web+mobile)
+- [ ] **P5.9.2** Extend Phase 3 resolver tests (32 → cover mobile path)
+- [ ] **P5.9.3** Extend Phase 4 integration tests (25 → cover external auth permissionMobile + compPermission split-bug regression)
+- [ ] **P5.9.4** New test: `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` 400
+
+### Phase 5 Wave 10: Code Review
+
+- [x] **P5.10.1** CR pass (single after W1-W9) <!-- done: 2026-05-06; PASS-with-fixes — see cr-phase5.md -->
+- [x] **P5.10.2** CR Fix Wave (5 fixed + 2 deferred) <!-- done: 2026-05-07; see "Phase 5 CR Fix Wave" below -->
+
+## Phase 5 CR Fix Wave (2026-05-07)
+
+### CR Fixes (5 ticked + 2 deferred)
+
+Reviewer verdict: PASS-with-fixes (BLOCKED จนกว่า H1 fix). Fix targets enumerated ใน
+`document/requirement/feature-management/cr-phase5.md`. Skipped: M3 (walker mobile/web action set —
+documentation-only design smell) + L3 (FE implicit dependency on `availableMenuKeys` — UX-level,
+constraint comment sufficient).
+
+- [x] **CR-H1** Eliminate duplicate `getUserPermissionJsonbRepository` call per request
+      <!-- done: 2026-05-07 -->
+      - Added cache key `userPermissionJsonb:{userUuid}` ใน ResolverCache (interface JSDoc updated)
+      - New helper `loadUserPermissionRowCached` ใน `permissionResolver.service.ts` รวม lookup + cache
+      - Both `resolveUserEffectivePermissionService` + `resolveUserEffectivePermissionMobileService`
+        ใช้ helper เดียวกัน → 2 → 1 DB hit ต่อ `/permissions/:uuid` request
+      - Updated `permissions.service.ts` JSDoc (Performance section) เพื่อ reflect H1 fix
+      - Test TC-23 + cross-cache test updated to assert `getUserPermissionJsonb.toHaveBeenCalledTimes(1)`
+- [x] **CR-M1** `buildCompanyFeatureList` รับ `cache?: ResolverCache` + memoize 4 batch queries
+      <!-- done: 2026-05-07 -->
+      - Service-level cache keys (`cf:packageFeatureIds:{packageId}`, `cf:activeAddonIds:{companyId}`,
+        `cf:overrides:{companyId}`, `cf:activeFeatures`, `cf:addonFeatureIds:{...}`) ป้องกัน duplicate
+        ระหว่าง list build + 2 resolver calls
+      - JSDoc cache-share rationale updated to enumerate new keys
+      - Test TC-2 updated for new signature `(companyId, cache)` ที่ resolveEffectivePackageId rcv
+- [x] **CR-M2** Migration M10 sequential `for...await` → `Promise.all`
+      <!-- done: 2026-05-07 -->
+      - 4 row-targeted UPDATEs are independent (different `code`, partial unique on `status_type='active'`)
+      - Both `up()` + `down()` converted; comment เพิ่ม rationale
+- [ ] **CR-M3** (deferred) Walker `hasActionKey` มี 5 web action keys ใช้กับ mobile JSONB
+      - Documentation-only design smell — current `Array.some()` semantic correct (mobile leaves
+        always have `read` → matched). Defer พร้อม comment ใน existing JSDoc (`extractMobile...` block
+        line 319-325 ของ permissionResolver.service.ts)
+- [x] **CR-L2** `createCompPermissionService` catch ordering — generalize CustomError pass-through
+      <!-- done: 2026-05-07 -->
+      - Added structural type-guard `isCustomHttpError(error)` ใน compPermission.service.ts header
+      - Refactored `createCompPermissionService` + `updateCompPermissionByUuidService` catch blocks:
+        check structural HTTP error first → AppError → wrap-as-500 fallback
+      - Removes brittle `errCode === 'INVALID_MENU_KEY_FOR_COMPANY'` exact-match list
+- [ ] **CR-L1** (deferred) `OwnerPermissionMobile` JSON round-trip clone
+      - Cosmetic; module-load 1x; outside Phase 5 scope (Phase 1 code per CR note)
+- [ ] **CR-L3** (deferred) Frontend `company-effective-menus-preview.tsx` implicit `availableMenuKeys`
+      - UX-level; current consumer flows always trigger Page A load before Page D access
+      - Future improvement: dispatch `sdGetAvailableMenuKeysRequest` ใน Page D mount (separate task)
+
+### Verification
+
+- TS: `NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit` exit 0
+- Prettier: applied to all 7 modified files (1 file reformatted by prettier — migration M10)
+- Unit tests:
+  - `permissionResolver.service.test.ts` — 57/57 pass (TC-23 + cross-cache test updated for H1)
+  - `permissions.service.test.ts` — pass (resolver mocked, no signature change)
+  - `companyFeature.service.test.ts` — 39/39 pass (TC-2 updated for `resolveEffectivePackageId(id, cache)`)
+- Integration tests:
+  - `permission-resolver.integration.spec.ts` — pass
+  - `companyFeature.integration.spec.ts` — pass
+  - `feature-management.integration.spec.ts` — pre-existing failure (cannot find
+    `@/utils/responseFormatter`) — unrelated to CR fix wave; documented as pre-existing in handoff
+
+### Files modified (7)
+
+- `src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts` (H1 — cache helper)
+- `src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts` (H1 — JSDoc)
+- `src/modules/v1/externalAuth/permissions.service.ts` (H1 — JSDoc Performance)
+- `src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts` (M1 — cache passthrough)
+- `src/database/postgresql/migrations/data/20260506-1801-backfill-comp_features-mobile_menu_keys-seed.ts` (M2)
+- `src/modules/v1/admin/compPermission/compPermission.service.ts` (L2 — type-guard)
+- `tests/unit/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.test.ts` (H1 assertion)
+- `tests/unit/modules/v2/sale-dashboard/companyFeature/companyFeature.service.test.ts` (M1 assertion)
+
+### Phase 5 Wave 11: Closeout
+
+- [ ] **P5.11.1** BA validation Phase 5
+- [ ] **P5.11.2** Push hw-be + hw-sale-cms branch `ball/feature/feature-management`
+- [ ] **P5.11.3** Update `.ai-memory/current.md` Active Feature → Phase 5 closeout
+- [ ] **P5.11.4** Update summary.md Progress Log entry
+
+### Phase 5 Doc Update Wave (parallel)
+
+- [ ] **P5.D.1** ssd.md — เพิ่ม mobile schema + endpoint shapes + resolver mobile path + compPermission BUG fix entry (ใช้เป็น reference สำหรับ implementation team)
+- [ ] **P5.D.2** backend.md — playbook for mobile API contract
+- [ ] **P5.D.3** frontend.md — playbook for Web|Mobile UI pattern
+- [ ] **P5.D.4** testcase.md — เพิ่ม mobile parity test cases (combined parameterized)
+- [ ] **P5.D.5** cr.md — extend code-review checklist + log Phase 4 W2 BUG fix entry
+- [ ] **P5.D.6** prd.md — ขยาย UX (Web|Mobile cols, helper bar)
+
+---
+
 ## Unit Test Tracker
 
-| Test Case                                                  | ผลที่คาดหวัง                            | ผลการ Test | สถานะ      |
-| ---------------------------------------------------------- | --------------------------------------- | ---------- | ---------- |
-| Create feature with valid menu_keys                        | สำเร็จ, return Feature                  | -          | - [ ] ผ่าน |
-| Create feature with invalid menu_key                       | reject 400                              | -          | - [ ] ผ่าน |
-| Create feature with duplicate code                         | reject 400                              | -          | - [ ] ผ่าน |
-| Delete feature with package usage                          | reject 400                              | -          | - [ ] ผ่าน |
-| Delete feature without usage                               | success 200                             | -          | - [ ] ผ่าน |
-| Replace package features                                   | features ของ package update ตรง         | -          | - [ ] ผ่าน |
-| Get package effective menus                                | dedupe ครบทุก feature                   | -          | - [ ] ผ่าน |
-| Create addon with is_quantifiable=true, no max_quantity    | reject 400                              | -          | - [ ] ผ่าน |
-| Toggle company feature (enabled override)                  | upsert row ใน comp_company_features     | -          | - [ ] ผ่าน |
-| Get company features                                       | คืน features พร้อม source ตาม mapping   | -          | - [ ] ผ่าน |
-| Resolver: package only                                     | effective = package features            | -          | - [ ] ผ่าน |
-| Resolver: package + addon                                  | effective = union                       | -          | - [ ] ผ่าน |
-| Resolver: package + override disabled                      | effective ไม่มี feature นั้น            | -          | - [ ] ผ่าน |
-| Resolver: package + override enabled (feature นอก package) | effective มี feature เพิ่ม              | -          | - [ ] ผ่าน |
-| Filter permission JSONB                                    | leaf path ที่ไม่อยู่ใน allowed → ตัดออก | -          | - [ ] ผ่าน |
-| Permission API for company with disabled feature           | response permission ไม่มี key นั้น      | -          | - [ ] ผ่าน |
-| RBAC: super_admin → see Feature Management menu            | เห็นเมนู                                | -          | - [ ] ผ่าน |
-| RBAC: admin → not see Feature Management menu              | ไม่เห็นเมนู                             | -          | - [ ] ผ่าน |
+| Test Case                                                                                               | ผลที่คาดหวัง                                                | ผลการ Test | สถานะ      |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------- | ---------- |
+| Create feature with valid menu_keys                                                                     | สำเร็จ, return Feature                                      | -          | - [ ] ผ่าน |
+| Create feature with invalid menu_key                                                                    | reject 400                                                  | -          | - [ ] ผ่าน |
+| Create feature with duplicate code                                                                      | reject 400                                                  | -          | - [ ] ผ่าน |
+| Delete feature with package usage                                                                       | reject 400                                                  | -          | - [ ] ผ่าน |
+| Delete feature without usage                                                                            | success 200                                                 | -          | - [ ] ผ่าน |
+| Replace package features                                                                                | features ของ package update ตรง                             | -          | - [ ] ผ่าน |
+| Get package effective menus                                                                             | dedupe ครบทุก feature                                       | -          | - [ ] ผ่าน |
+| Create addon with is_quantifiable=true, no max_quantity                                                 | reject 400                                                  | -          | - [ ] ผ่าน |
+| Toggle company feature (enabled override)                                                               | upsert row ใน comp_company_features                         | -          | - [ ] ผ่าน |
+| Get company features                                                                                    | คืน features พร้อม source ตาม mapping                       | -          | - [ ] ผ่าน |
+| Resolver: package only                                                                                  | effective = package features                                | -          | - [ ] ผ่าน |
+| Resolver: package + addon                                                                               | effective = union                                           | -          | - [ ] ผ่าน |
+| Resolver: package + override disabled                                                                   | effective ไม่มี feature นั้น                                | -          | - [ ] ผ่าน |
+| Resolver: package + override enabled (feature นอก package)                                              | effective มี feature เพิ่ม                                  | -          | - [ ] ผ่าน |
+| Filter permission JSONB                                                                                 | leaf path ที่ไม่อยู่ใน allowed → ตัดออก                     | -          | - [ ] ผ่าน |
+| Permission API for company with disabled feature                                                        | response permission ไม่มี key นั้น                          | -          | - [ ] ผ่าน |
+| RBAC: super_admin → see Feature Management menu                                                         | เห็นเมนู                                                    | -          | - [ ] ผ่าน |
+| RBAC: admin → not see Feature Management menu                                                           | ไม่เห็นเมนู                                                 | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: Create feature with valid mobile_menu_keys                                          | success, return Feature with both menuKeys + mobileMenuKeys | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: Create feature with invalid mobile menu_key                                         | reject 400                                                  | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: GET /features/menu-keys/available shape                                             | response = `{web: [...], mobile: [...]}`                    | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: External auth response include permissionMobile filtered                            | leaf path ที่ไม่อยู่ใน mobile effective → ตัดออก            | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: compPermission save with invalid permission_mobile key                              | reject 400 `INVALID_MOBILE_MENU_KEY_FOR_COMPANY`            | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: Phase 4 W2 BUG fix regression — permission_mobile with key in web only (not mobile) | reject 400 (เดิม pass ผิด)                                  | -          | - [ ] ผ่าน |
+| **Phase 5 Mobile**: Resolver mobile path returns effectiveMobileMenuKeys                                | union/delta logic ตรงกับ web path                           | -          | - [ ] ผ่าน |
 
 ---
 

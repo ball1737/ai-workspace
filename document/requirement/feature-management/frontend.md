@@ -158,16 +158,19 @@ src/
 - **File:** `src/app/dashboard/feature-management/create/page.tsx`
 - **Section:** `feature-create-view.tsx`
 - **Component:** `feature-form.tsx` (shared with edit)
-  - Fields: `code`, `name (TH/EN)`, `description (TH/EN)`, `menuKeys` (multi-select tree), `sortOrder`, `statusType`
-  - Validation: code matches `^[a-z0-9_]+$`, code uniqueness (verify on blur via API)
-  - Submit → API POST → redirect to detail page
+  - Fields: `code`, `name (TH/EN)`, `description (TH/EN)`, `menuKeys` (web), `mobileMenuKeys` (mobile) — both rendered side-by-side via `<MenuKeysSelect mode="split">`, `sortOrder`, `statusType`
+  - **Phase 5 Wave 7 — Web|Mobile side-by-side menu keys:** section "menu_keys" renders 2 columns ที่ MUI `Grid xs=12 md=6` — Web (left, monitor icon) + Mobile (right, smartphone icon). Each column มี search input + grouped checkbox tree + per-side empty state + per-side error message (`menu_keys_invalid` for Web / `mobile_menu_keys_invalid` for Mobile)
+  - Available menu key sources: `availableMenuKeys.web` + `availableMenuKeys.mobile` (Q3=B `AvailableMenuKeysPayload` shape, Wave 6)
+  - Validation: code matches `^[a-z0-9_]+$`, code uniqueness (verify on blur via API), each column independently validates ที่จะอยู่ใน respective namespace
+  - Submit → API POST (payload includes both `menuKeys` + `mobileMenuKeys`) → redirect to detail page
 
 #### `/dashboard/feature-management/[id]` (Detail)
 
 - **File:** `src/app/dashboard/feature-management/[id]/page.tsx`
 - **Section:** `feature-detail-view.tsx`
 - **Component:**
-  - Display: code, name, description, menuKeys (with tree preview), sortOrder, status
+  - Display: code, name, description, sortOrder, status
+  - **Phase 5 Wave 7 — Web|Mobile side-by-side preview:** `<MenuTreePreview mode="split">` render 2 columns Web | Mobile (Grid xs=12 md=6); each column header shows label + count badge + namespace icon (monitor/smartphone); each column tree filtered by `webAvailableKeys` / `mobileAvailableKeys`; per-side empty messages (`web_empty` / `mobile_empty`)
   - `feature-usage-info.tsx` — list packages/addons ที่ผูก feature นี้
   - Actions: Edit, Delete
 
@@ -175,7 +178,7 @@ src/
 
 - **File:** `src/app/dashboard/feature-management/[id]/edit/page.tsx`
 - **Section:** `feature-edit-view.tsx`
-- **Component:** `feature-form.tsx` (same as create, with initial values)
+- **Component:** `feature-form.tsx` (same as create, with initial values seeded via `mapFeatureToFormValues` — includes `mobileMenuKeys: feature.mobileMenuKeys ?? []`)
 
 ### 1.2 Package Management
 
@@ -236,9 +239,15 @@ src/
   - `company-feature-row.tsx` — แต่ละ row:
     - Feature name + description
     - Source badge: `feature-source-badge.tsx` (Package / Addon / Override / Default)
+    - **Phase 5 W8:** per-row Web/Mobile menu count chips (icon + count) wrapped in tooltip — render เฉพาะถ้า feature มี `menuKeys` หรือ `mobileMenuKeys` > 0
     - Toggle switch (current state)
     - "Reset to default" button (ถ้ามี override) → call DELETE override
   - `company-feature-toggle-confirm-dialog.tsx` — เปิดเมื่อ toggle, รับ `reason` (optional)
+  - **`company-effective-menus-preview.tsx` (Phase 5 W8 — NEW):**
+    - Source: reads `effectiveMenuKeys` + `effectiveMobileMenuKeys` from `useSaleDashboardCompanyFeatures()` slice (populated by GET endpoint)
+    - Wraps `<MenuTreePreview mode="split">` (Wave 7 component) → side-by-side Web | Mobile tree using master namespace catalog from `useSaleDashboardFeatureManagement().availableMenuKeys`
+    - i18n: keys ใต้ `companyFeatures.effective_menus.{title, subtitle, web_empty, mobile_empty}` + `companyFeatures.row.menu_keys_tooltip` (interpolated `{{web}}`/`{{mobile}}`)
+    - Why a Page-D-specific component (vs reusing Page B's `package-effective-menus-preview.tsx`): Page B reads per-PACKAGE state (`useSaleDashboardPackageManagement.effectiveMenus`); Page D reads per-COMPANY (override-applied) → state slices intentionally separate
 
 ---
 
@@ -246,19 +255,26 @@ src/
 
 ### `src/components/feature-management/menu-keys-select.tsx`
 
-- **Props:** `value: string[]`, `onChange: (value: string[]) => void`, `availableKeys: string[]`, `disabled?: boolean`
+- **API (Phase 5 Wave 7):** discriminated union `mode: "single" | "split"`
+  - **`mode="single"` (default, backward compat):** props = `{ value, onChange, availableKeys, disabled?, label?, helperText?, error? }`. Renders single column.
+  - **`mode="split"` (Phase 5):** props = `{ webOptions, webValue, onWebChange, webLabel?, webError?, webHelperText?, mobileOptions, mobileValue, onMobileChange, mobileLabel?, mobileError?, mobileHelperText?, disabled? }`. Renders 2 columns ที่ Grid `xs=12 md=6` (Web | Mobile).
 - **Behavior:**
-  - Fetch available keys จาก API `/features/menu-keys/available` (cached)
-  - Render เป็น tree (group by main category, leaf เป็น checkbox)
-  - Multi-select tree-style
-  - Search box
-- **Usage:** Feature form, package detail (read-only mode)
+  - Each column has search input + grouped checkbox tree (group by main category from key, e.g. `users.read` → category `users`); group-level checkbox supports indeterminate
+  - Multi-select with parent-tristate
+  - Available keys come from `availableMenuKeys.web` / `availableMenuKeys.mobile` (Q3=B `AvailableMenuKeysPayload`)
+  - Per-column empty state when `*Options.length === 0`
+- **Usage:** Feature form (split mode); other pages (single mode if needed)
 
 ### `src/components/feature-management/menu-tree-preview.tsx`
 
-- **Props:** `menuKeys: string[]`, `availableKeys: string[]`
-- **Behavior:** Render tree ของ menu structure แบบ readonly (highlight ที่ enabled)
-- **Usage:** Package detail "Effective Menus", Addon detail "Effective Menus"
+- **API (Phase 5 Wave 7):** discriminated union `mode: "single" | "split"`
+  - **`mode="single"` (default, backward compat):** props = `{ menuKeys, availableKeys, emptyMessage? }`. Renders single tree.
+  - **`mode="split"` (Phase 5):** props = `{ webMenuKeys, mobileMenuKeys, webAvailableKeys?, mobileAvailableKeys?, webEmptyMessage?, mobileEmptyMessage?, webLabel?, mobileLabel? }`. Renders 2 columns ที่ Grid `xs=12 md=6`. Each column header shows label + count + iconify icon (monitor / smartphone).
+- **Behavior:** Render tree ของ menu structure แบบ readonly — visible groups = those that have at least 1 enabled leaf (filter by `*MenuKeys`); group ordering by category alpha
+- **Usage:**
+  - Feature detail "Menu Keys" (split mode) — Phase 5 Wave 7
+  - Package detail "Effective Menus" (still single mode, Wave 8 will refactor to split)
+  - Addon detail "Effective Menus" (still single mode)
 
 ### `src/components/feature-management/feature-source-badge.tsx`
 
@@ -278,7 +294,6 @@ src/
 > **Q7 Resolution (2026-05-05):** ชื่อไฟล์ + reducer slot + hook + saga watcher ของ Master Data slices ใช้ตาม spec ด้านล่าง (`sale-dashboard-{feature,package,addon}-management`, `useSaleDashboard{Feature,Package,Addon}Management`) — legacy slice เดิมที่ใช้ชื่อนี้ถูก rename เป็น `sale-dashboard-package-config-feature` ใน Wave Q7 (pure rename, no logic change). 4 importer views ของ legacy (`package-config-feature-view`, `edit-package-dialog`, `lead-information-tab`, `customer-information-tab`) update slot key + namespace ref แล้ว
 >
 > **Q8 Resolution (2026-05-05):** `AddonBillingInterval` + `PackageBillingInterval` ใช้ค่า `'month' | 'year'` (string literal union, nullable) — match backend B3 Zod `z.enum(['month','year']).nullable()`. `null` = one-time billing. Form select 3 options: One-time (form value `""` → wire `null`), Monthly (`"month"`), Yearly (`"year"`). i18n key `addonManagement.billing.one_time` คงไว้เป็น display label ของ null (semantic preservation)
-
 
 โครงสร้างคล้าย `sale-dashboard-admin-users.ts` ที่มีอยู่แล้ว
 
@@ -309,12 +324,24 @@ interface State {
   list: Feature[];
   pagination: Pagination;
   current: Feature | null;
-  availableMenuKeys: string[];
+  availableMenuKeys: AvailableMenuKeysPayload; // { web: string[]; mobile: string[] }
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
 }
 ```
+
+> **Phase 5 Wave 6 (Q3=B BREAKING):** `availableMenuKeys` shape changed from a
+> flat `string[]` to `{ web, mobile }`. Backend `GET /menu-keys/available`
+> returns the new shape directly as the response envelope `data` field — the
+> reducer maps each namespace defensively (`Array.isArray` guard). `Feature`
+>
+> - `CreateFeatureRequest` + `UpdateFeatureRequest.data` now also carry an
+>   additive `mobileMenuKeys: string[]` field (optional on the wire — backend
+>   defaults to `[]`). Wave 7 will refactor consumers (`feature-form.tsx`,
+>   `menu-keys-select.tsx`, `menu-tree-preview.tsx`, detail-view) to render
+>   Web|Mobile columns; in Wave 6 those consumers are bridged with
+>   `availableMenuKeys.web` to keep pre-Wave-6 behavior + TS-clean.
 
 ### 3.3 Saga (`sagas/sale-dashboard-feature-management.ts`)
 

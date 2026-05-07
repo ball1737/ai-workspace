@@ -40,11 +40,12 @@ status: draft
 ### เป้าหมายรอง
 - รักษา backward compatibility กับ comp_permission JSONB เดิม (ไม่ทำลาย data)
 - รองรับ multilingual (TH/EN) ตามมาตรฐาน JSONB pattern
-- โครงสร้างพร้อมรองรับ Phase 5 (cleanup v1 legacy) ในอนาคต
+- รองรับ mobile menu parity ตาม `PermissionMobileDefault` (Phase 5 — added 2026-05-06)
+- โครงสร้างพร้อมรองรับ Phase 6 (cleanup v1 legacy เลื่อนจาก Phase 5 เดิม) ในอนาคต
 
 ## 3. Non-Goals (สิ่งที่จะไม่ทำในรอบนี้)
 
-- ไม่ migrate v1 caller ทั้งหมดที่ใช้ `const_packages` (ยกเว้น `comp_companies.package_id` FK) — Phase 5
+- ไม่ migrate v1 caller ทั้งหมดที่ใช้ `const_packages` (ยกเว้น `comp_companies.package_id` FK) — Phase 6 (เลื่อนจาก Phase 5 เดิม)
 - ไม่ drop `const_packages` table ในงานนี้
 - ไม่ drop / migrate `featureDefinitions.ts` constant ในงานนี้
 - ไม่ drop `featureManagement` v1 module + `sale_dashboard_disabled_features` table ในงานนี้
@@ -120,6 +121,57 @@ status: draft
   - [ ] Tab "Features" ใน client detail visible เฉพาะ super_admin
   - [ ] RBAC matrix: admin / manager / viewer ทั้งหมด no access
 
+### FR-Mobile (Phase 5, Added 2026-05-06): Mobile Menu Parity
+
+> Mirror ทั้ง storage + resolver + external auth + admin validation + UI สำหรับ `PermissionMobileDefault`
+> Source-of-truth plan: `/Users/ball/.claude/plans/lead-menu-elegant-finch.md`
+
+#### FR-Mobile-1: Storage parity
+
+- เพิ่ม column `comp_features.mobile_menu_keys` JSONB NOT NULL DEFAULT `'[]'` + GIN index (Q2=A parallel column)
+- Default value `'[]'` สำหรับ row ใหม่ทุกตัว
+- Data migration backfill SEED tier (sort_order ≤ 4) ตาม mapping จาก `PermissionMobileDefault` ที่ user เคาะ (Q7=A+B)
+
+#### FR-Mobile-2: Master CRUD parity
+
+- `feature.interface.ts` Zod input/output มี `mobileMenuKeys: z.array(z.string()).default([])`
+- `feature.repository / service / adapter / controller` รับ field ใหม่และ persist ลง column
+- **BREAKING:** `GET /api/v2/sale-dashboard/features/menu-keys/available` response เปลี่ยน shape เป็น `{ web: string[], mobile: string[] }` (Q3=B)
+- `compPermission.ts` มี helper `getAvailableMobileMenuKeys()` คู่กับ `getAvailableMenuKeys()` (อ่านจาก `PermissionMobileDefault`)
+
+#### FR-Mobile-3: Permission resolver parity
+
+- เพิ่ม `resolveCompanyEffectiveMobileMenuKeysService(companyId)`, `filterPermissionMobileByMenuKeysService`, `extractMobileMenuKeysFromPermissionJsonbService`
+- Reuse `resolveCompanyEffectiveFeatureIdsService` (ไม่ duplicate)
+- In-request cache ขยาย scope ให้รวม mobile keys/permissions
+
+#### FR-Mobile-4: External Auth parity
+
+- `GET /api/external/auth/v1/permissions/:userUuid` response เพิ่ม field `permissionMobile` filtered ผ่าน effective mobile menu keys ของบริษัท
+- Graceful empty fallback ตาม Phase 4 W1 pattern: ถ้าไม่มี mobile menu keys → คืน `PermissionMobileDefault` skeleton ที่ leaves เป็น false
+
+#### FR-Mobile-5: compPermission admin BUG FIX + mobile validation
+
+- **Phase 4 W2 BUG FIX:** validate `permission_mobile` JSONB ผ่าน effective **web** menu keys ผิด — ต้อง split:
+  - `permission` JSONB → validate ผ่าน effective web menu keys (เดิม)
+  - `permission_mobile` JSONB → validate ผ่าน effective mobile menu keys (ใหม่)
+- เพิ่ม error code `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` (HTTP 400)
+- Audit Phase 4 Fix 2-4 transitively: `getCompPermissionByUuidController` (deepMerge baseline), `/comp-permission/default`, owner STRICT — ใช้ mobile filter ด้วย
+
+#### FR-Mobile-6: Frontend UI parity (Side-by-side cols)
+
+- `menu-keys-select.tsx` รองรับ side-by-side mode (web/mobile แยก state)
+- `menu-tree-preview.tsx` แสดง side-by-side
+- `feature-form.tsx` (Page A): edit form มี Web col + Mobile col
+- `feature-detail-view.tsx` (Page A): preview side-by-side
+- `package-effective-menus-preview.tsx` (Page D): Web col + Mobile col
+- i18n: เพิ่ม `webMenus`, `mobileMenus`, `availableWebMenuKeys`, `availableMobileMenuKeys` (en+th parity)
+
+#### FR-Mobile-7: Tests parity
+
+- Combined parameterized tests (Q8=B): extend Phase 2 unit, Phase 3 resolver (32 → covers mobile path), Phase 4 integration (25 → covers `permissionMobile` + compPermission split-bug regression)
+- New test: `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` 400 case
+
 ### FR-7: Database Schema Migration
 - Description: สร้าง 7 tables ใหม่ + migrate `comp_companies.package_id` FK
 - Acceptance Criteria:
@@ -188,6 +240,8 @@ status: draft
 - [x] **Q6 — RBAC resource collision: `packages` มีอยู่แล้วใน `rbac.ts` (pre-existing) ใช้โดย `package-config-feature` view:** **Decision = A (ใช้ resource name ใหม่ `master_packages`)** (resolved 2026-05-05 จาก Wave F1 outbox) — Master Data Package Management UI จะใช้ key `"master_packages"` ใน components ที่เกี่ยวข้อง → existing `packages` resource คงเดิม ไม่กระทบ admin/manager/viewer ที่ใช้ `package-config-feature` view → frontend.md §4 ปรับแล้ว, F5 wave (Page B) ต้องเพิ่ม `master_packages` เข้า rbac.ts ก่อน implement components
 - [x] **Q7 — Slice file naming collision: legacy slice `sale-dashboard-feature-management` (per-company toggle + package info preview) ถูกใช้โดย 4 production views ก่อนแล้ว → F3 Master Data slices ชนชื่อ:** **Decision = B (rename-only)** (resolved 2026-05-05 จาก Wave F3 outbox + Lead dispatch) — rename legacy slice → `sale-dashboard-package-config-feature` (ตามชื่อ section folder), F3 Master Data slices กลับใช้ชื่อ `sale-dashboard-{feature,package,addon}-management` ตาม spec เดิม → pure rename ห้าม refactor logic, ห้ามแก้ action types ของ legacy → reducer slot keys / hook names / saga watcher names update ตามชื่อใหม่ → 4 importer views (`package-config-feature-view`, `edit-package-dialog`, `lead-information-tab`, `customer-information-tab`) update slot key / namespace ref → TS pass, prettier clean, behavior ของ legacy ไม่เปลี่ยน
 - [x] **Q8 — Frontend Addon `billingInterval` value mismatch backend:** Frontend F3 slice draft ใช้ `AddonBillingInterval = 'monthly' | 'yearly' | 'one_time'` แต่ backend B3 Zod ใช้ `z.enum(['month', 'year']).nullable()` (verified `addon.interface.ts` lines 34/81/113) — addon CRUD form ส่ง `'monthly'` ไป backend จะ reject 400 → **Decision (resolved 2026-05-05 จาก Wave F6 outbox + user A)**: rename `monthly→month`, `yearly→year`, drop `one_time` literal (semantic "One-time payment" ย้ายไปใช้ null per backend `nullable()`) → form select 3 options (One-time form value=`""` → wire `null`, Monthly `"month"`, Yearly `"year"`); mappers convert null↔"" ที่ form/payload boundary; i18n keys `addonManagement.billing.{month,year,one_time}` (one_time key คงไว้สำหรับ display label ของ null) → TS pass, prettier clean, en+th parity 89 keys; Package side ตรง backend อยู่แล้ว (F5 fix ตอน wave F5)
+- [x] **Q9 — companyFeature router pattern ภายใต้ /sale-dashboard/:** **Decision = A (sale-dashboard router pattern)** (resolved 2026-05-06 ตอน Phase 3 dispatch) — companyFeature mount ที่ `/api/v2/sale-dashboard/companies/:companyUuid/features` ตาม Phase 2 precedent (validate sale dashboard token + super_admin gating)
+- [x] **Q1-Q8 (Phase 5 mobile parity, resolved 2026-05-06):** ดู FR-Mobile + plan file `/Users/ball/.claude/plans/lead-menu-elegant-finch.md`. Q1=D full mirror / Q2=A parallel column / Q3=B combined response shape `{web,mobile}` / Q4=C side-by-side cols / Q5=A Page D mobile col / Q6=A Phase 5 mobile + Cleanup เลื่อน Phase 6 / Q7=A+B migration M9+M10 SEED tier backfill / Q8=B parameterized tests
 
 ## 10. References
 

@@ -63,11 +63,25 @@ status: draft
 
 ### ลบ
 
-- ไม่ลบในงานนี้ (Phase 5 = แยก phase ทีหลัง):
+- ไม่ลบในงานนี้ (Phase 6 = แยก phase ทีหลัง — เลื่อนจาก Phase 5 เดิม 2026-05-06):
   - `featureManagement` v1 module
   - `sale_dashboard_disabled_features` table
   - `featureDefinitions.ts` constant
   - `const_packages` table (eventual)
+
+### เพิ่ม (Phase 5 — Mobile Menu Parity, added 2026-05-06)
+
+> User แจ้งว่า "ลืม" mobile menu — `PermissionMobileDefault` ที่อยู่ในไฟล์ `compPermission.ts` เป็น dead constant (ไม่มีโค้ด consume)
+
+- Column ใหม่: `comp_features.mobile_menu_keys` JSONB NOT NULL DEFAULT `'[]'` + GIN index (parallel กับ `menu_keys`)
+- Helper ใหม่: `getAvailableMobileMenuKeys()` ใน `compPermission.ts` (อ่าน leaf paths จาก `PermissionMobileDefault`)
+- Resolver functions: `resolveCompanyEffectiveMobileMenuKeysService`, `filterPermissionMobileByMenuKeysService`, `extractMobileMenuKeysFromPermissionJsonbService`
+- Response shape change (BREAKING): `GET /features/menu-keys/available` → `{ web: string[], mobile: string[] }`
+- External Auth: เพิ่ม `permissionMobile` field ใน response ของ `/external/auth/v1/permissions/:userUuid` (graceful empty fallback)
+- compPermission admin: split validation (BUG FIX Phase 4 W2 oversight) + error code ใหม่ `INVALID_MOBILE_MENU_KEY_FOR_COMPANY`
+- Frontend UI: Web col + Mobile col side-by-side ทุกที่ที่แก้/แสดง menu (Page A edit/detail, Page D Company Features tab)
+- Migrations: M9 (ALTER ADD COLUMN) + M10 (data backfill SEED tier 4 features)
+- Plan reference: `/Users/ball/.claude/plans/lead-menu-elegant-finch.md`
 
 ### ผลกระทบที่คาดว่าจะเกิด
 
@@ -192,6 +206,7 @@ status: draft
 | 2026-05-04 | Initial analysis + grill session + plan approval                            | SA    | 7 sub-decisions resolved               |
 | 2026-05-04 | Documents drafted (requirement, prd, ssd, summary, task-list, testcase, cr) | SA    | Set A — decision & measurement docs    |
 | 2026-05-04 | Implementation docs added (backend, frontend, migration, checklist, prompt) | SA    | Set B — engineering playbook merged in |
+| 2026-05-06 | Phase 5 plan approved — Mobile Menu Parity (8 Q resolved + 11 waves)        | Lead  | Cleanup เลื่อน Phase 6 — see plan file `/Users/ball/.claude/plans/lead-menu-elegant-finch.md` |
 
 ---
 

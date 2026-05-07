@@ -147,7 +147,17 @@ export const featureBaseSchema = z.object({
   name: z.object({ th: z.string().min(1), en: z.string().min(1) }),
   description: z.object({ th: z.string(), en: z.string() }).optional(),
   menuKeys: z.array(z.string()).default([]),
+  // Phase 5 (Wave 2) — mobile parity field; default [] = mobile menu locked.
+  // Validated against getAvailableMobileMenuKeys() in service layer.
+  mobileMenuKeys: z.array(z.string()).default([]),
   sortOrder: z.number().int().default(0),
+});
+
+// Phase 5 Wave 2 (Q3=B breaking) — response shape for /features/menu-keys/available.
+// Replaces legacy `{ menuKeys: string[] }`; frontend Wave 6 syncs.
+export const menuKeysAvailableResponseSchema = z.object({
+  web: z.array(z.string()),
+  mobile: z.array(z.string()),
 });
 
 export const createFeatureSchema = z.object({
@@ -178,6 +188,8 @@ export interface Feature {
   name: { th: string; en: string };
   description?: { th: string; en: string };
   menuKeys: string[];
+  // Phase 5 (Wave 2) — mobile parity. Always present in response (default []).
+  mobileMenuKeys: string[];
   sortOrder: number;
   statusType: string;
   createdAt: string;
@@ -207,11 +219,13 @@ export interface FeatureWithUsage extends Feature {
 - `getFeatureByUuidService(uuid): Promise<FeatureWithUsage>`
 - `createFeatureService(input, createdBy): Promise<Feature>`
   - Validate `code` unique
-  - Validate `menuKeys` ทุกตัวอยู่ใน `getAvailableMenuKeys()` (จาก `compPermission.ts`)
+  - Validate `menuKeys` ทุกตัวอยู่ใน `getAvailableMenuKeys()` (จาก `compPermission.ts`) — error code `INVALID_MENU_KEY` (400)
+  - **Phase 5 Wave 2:** Validate `mobileMenuKeys` ทุกตัวอยู่ใน `getAvailableMobileMenuKeys()` — error code `INVALID_MOBILE_MENU_KEY` (400)
 - `updateFeatureService(uuid, input, updatedBy): Promise<Feature>`
+  - Re-validate ทั้ง `menuKeys` + `mobileMenuKeys` ถ้า field มีใน partial body (ไม่บังคับส่ง)
 - `deleteFeatureService(uuid, archivedBy): Promise<void>`
   - เรียก `countFeatureUsageRepository` ก่อน — block ถ้า package/addon > 0
-- `getAvailableMenuKeysService(): Promise<string[]>` — wrap helper จาก constant
+- `getAvailableMenuKeysService(): MenuKeysAvailableResponse` — **Phase 5 Wave 2 (Q3=B breaking)** returns `{ web: getAvailableMenuKeys(), mobile: getAvailableMobileMenuKeys() }` (sync — both helpers are synchronous tree walkers)
 
 #### feature.adapter.ts
 
@@ -330,27 +344,76 @@ export const removeCompanyFeatureOverrideService = async (
 ```typescript
 // คืน Set<feature_id> ที่ effective ของบริษัท
 export const resolveCompanyEffectiveFeatureIdsService = async (
-  companyId: string
-): Promise<Set<string>>;
+  companyId: string,
+  cache?: ResolverCache,
+): Promise<EffectiveFeatureIds>;
 
-// คืน Set<menu_key> (path เช่น "payroll.payrollSetting") ที่ enabled
+// คืน Set<menu_key> (path เช่น "payroll.payrollSetting") ที่ enabled — WEB
 export const resolveCompanyEffectiveMenuKeysService = async (
-  companyId: string
-): Promise<Set<string>>;
+  companyId: string,
+  cache?: ResolverCache,
+): Promise<EffectiveMenuKeys>;
 
-// Filter PermissionDefault-shaped JSONB ตัด key ที่ leaf path ไม่อยู่ใน allowedMenuKeys
+// คืน Set<menu_key> สำหรับ MOBILE (Phase 5 W3) — reuse feature-id resolution (cached); batch lookup mobile_menu_keys
+export const resolveCompanyEffectiveMobileMenuKeysService = async (
+  companyId: string,
+  cache?: ResolverCache,
+): Promise<EffectiveMenuKeys>;
+
+// Filter PermissionDefault-shaped JSONB ตัด key ที่ leaf path ไม่อยู่ใน allowedMenuKeys (WEB)
 export const filterPermissionByMenuKeysService = (
-  permissionJsonb: Record<string, unknown>,
-  allowedMenuKeys: Set<string>
-): Record<string, unknown>;
+  permissionJsonb: PermissionJsonb,
+  allowedMenuKeys: ReadonlySet<string>,
+): PermissionJsonb;
 
-// Convenience: load comp_permission ของ user → filter → return
+// MOBILE counterpart (Phase 5 W3) — delegate to web walker; leaf-detection action-key-set-agnostic
+// (mobile leaves เป็น subset ของ web ACTION_KEYS เพราะ hasActionKey() เช็ค any-key-present)
+export const filterPermissionMobileByMenuKeysService = (
+  permissionJsonb: PermissionJsonb,
+  allowedMobileMenuKeys: ReadonlySet<string>,
+): PermissionJsonb;
+
+// Extract leaf paths from JSONB tree (WEB) — Phase 4 P4.4 admin save validation reuse
+export const extractMenuKeysFromPermissionJsonbService = (
+  permissionJsonb: PermissionJsonb,
+): string[];
+
+// MOBILE counterpart (Phase 5 W3) — delegate to web extractor (same rationale as filter)
+export const extractMobileMenuKeysFromPermissionJsonbService = (
+  permissionJsonb: PermissionJsonb,
+): string[];
+
+// Convenience: load comp_permission ของ user → filter → return (WEB only — mobile path TBD Phase 5 W4)
 export const resolveUserEffectivePermissionService = async (
-  userUuid: string
-): Promise<Record<string, unknown>>;
+  userUuid: string,
+  cache?: ResolverCache,
+): Promise<PermissionJsonb>;
+
+// Centralised effective package_id resolution (Seed fallback) — shared with companyFeature.service
+export const resolveEffectivePackageIdService = async (
+  companyId: string,
+  cache?: ResolverCache,
+): Promise<string>;
 ```
 
-**Performance:** ใช้ in-request memoization (cache ผลลัพธ์ของ `resolveCompanyEffectiveMenuKeysService` ต่อ request) เพื่อกัน N+1
+**Performance:** ใช้ in-request memoization ผ่าน `ResolverCache` (`Map<string, unknown>`) — caller สร้าง `new Map()` ต่อ request แล้วส่งเข้า service functions
+ทุกตัว. Cache keys ที่ใช้:
+
+- `featureIds:{companyId}` → `EffectiveFeatureIds`
+- `menuKeys:{companyId}` → `EffectiveMenuKeys` (web)
+- `mobileMenuKeys:{companyId}` → `EffectiveMenuKeys` (mobile — Phase 5 W3)
+- `packageId:{companyId}` → `string` (Seed fallback resolved id)
+
+#### permissionResolver.repository.ts (เพิ่มเติม Phase 5 W3)
+
+```typescript
+// คืน mobile_menu_keys (string[]) แบบ flatten ของ feature_ids (mirror getFeatureMenuKeysRepository)
+// Pre-fetch + LATERAL `jsonb_array_elements_text(f.mobile_menu_keys)` + WHERE IN
+// Guard: `jsonb_typeof(f.mobile_menu_keys) = 'array'` กัน corrupt jsonb crash (M2-style)
+export const getFeatureMobileMenuKeysRepository = async (
+  featureIds: readonly string[],
+): Promise<readonly string[]>;
+```
 
 ---
 
@@ -413,7 +476,7 @@ export class CompFeatures extends Model {
 
 ---
 
-## 4. Updates ของ Existing API ที่ใช้ `comp_permission` (Phase 4)
+## 4. Updates ของ Existing API ที่ใช้ `comp_permission` (Phase 4 + Phase 5 W4)
 
 ### 4.1 จุดที่ต้องแก้
 
@@ -429,6 +492,73 @@ export class CompFeatures extends Model {
 - `comp_permission.permission` JSONB ยังเก็บข้อมูลเต็ม (ไม่ตัด)
 - Resolver filter ตอน **อ่าน** เท่านั้น
 - Frontend Permission Management UI (ของเดิม): filter เมนูที่แสดง ตาม company effective menus
+
+### 4.3 Phase 5 W4 — Mobile Path Extension (additive)
+
+| File                                                                | สิ่งที่ต้องทำ                                                                                                                       |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/modules/v1/externalAuth/permissions.service.ts`                | `getPermissionsService` เพิ่ม `permissionMobile` field — call `resolveUserEffectivePermissionMobileService` (shared cache กับ web) |
+| `src/modules/v1/externalAuth/permissions.interface.ts`              | `PermissionsResponse.permissionMobile: Record<string, unknown>` (additive — backward compat)                                        |
+| `src/modules/v1/admin/compPermissionMapping/compPermissionMapping.service.ts` | `getEmployeePermissionService` BUG FIX + extend mobile path: filter `PermissionMobileDefault` ผ่าน `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (เดิมใช้ web filter ผิด) |
+| `src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts` | เพิ่ม `resolveUserEffectivePermissionMobileService(userUuid, cache?)` mirror web — graceful `{}` ถ้า `permission_mobile = null` |
+| `src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts` | `getUserPermissionJsonbRepository` extend select `cp.permission_mobile` ใน round trip เดียว                                    |
+| `src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts`  | `UserPermissionRow.permissionMobileJsonb: PermissionJsonb \| null`                                                              |
+
+#### Service signatures (Phase 5 W4)
+
+```typescript
+// resolver.service.ts (mobile counterpart of web; graceful for null mobile JSONB)
+export const resolveUserEffectivePermissionMobileService = async (
+  userUuid: string,
+  cache?: ResolverCache,
+): Promise<PermissionJsonb>;
+```
+
+#### หลักการ Phase 5 W4
+
+- **Backward compat**: `permissionMobile` เป็น additive field — old clients (web) ที่ไม่อ่าน → no regression
+- **Cache sharing**: caller สร้าง 1 `Map<string, unknown>` ส่งให้ทั้ง web + mobile resolver → mobile call hit cache สำหรับ `featureIds:{companyId}` + `packageId:{companyId}` (saved 2 batch DB calls); เพิ่มแค่ 1 batch `getFeatureMobileMenuKeysRepository`
+- **Empty fallback semantics**:
+  - User ไม่มี mapping → `permissionMobile = {}` (mirrors web `permission`)
+  - User มี mapping แต่ `permission_mobile = NULL` → `permissionMobile = {}` (graceful — admin ยังไม่ได้กำหนด; ไม่ใช่ error)
+  - Company ไม่มี mobile menu keys → filter result `{}` (Q-C policy preserves)
+- **Owner Q-A=STRICT**: `getEmployeePermissionService` mobile path บังคับ filter `PermissionMobileDefault` baseline ก่อน `deepMerge(isOwner=true)` → owner ไม่ bypass effective menu filter (parity กับ web)
+
+### 4.4 Phase 5 W5 — compPermission admin BUG FIX + mobile validation
+
+> **BUG ที่ fix:** Phase 4 W2 helper `assertPermissionKeysWithinCompanyMenusService` รวม keys ของ `permission` (web) + `permission_mobile` (mobile) แล้ว validate ผ่าน effective **web** menu keys อันเดียว → admin save mobile permission ที่มี mobile keys → reject 400 invalid key (หรือ pass บังเอิญ → save ผิด context).
+
+| File                                                                | สิ่งที่ต้องทำ                                                                                                                       |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `src/modules/v1/admin/compPermission/compPermission.service.ts`     | Split `assertPermissionKeysWithinCompanyMenusService` เป็น 2 path: web ผ่าน `extractMenuKeys` + `resolveCompanyEffectiveMenuKeysService`, mobile ผ่าน `extractMobileMenuKeys` + `resolveCompanyEffectiveMobileMenuKeysService` (independent — web fail throws web error first; mobile fail throws mobile error second). `getCompPermissionByUuidService` ใช้ `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` สำหรับ mobile JSONB (เดิมใช้ web ผิด) |
+| `src/api/v1/admin/compPermission/compPermission.controller.ts`      | `getCompPermissionByUuidController` resolve ทั้ง web + mobile menu keys (parallel, shared cache) → filter `PermissionDefault` ผ่าน web, filter `PermissionMobileDefault` ผ่าน mobile ก่อน `deepMerge`; `getCompPermissionDefaultListController` เปลี่ยนเดียวกัน |
+
+#### Error codes (Phase 5 W5)
+
+```typescript
+// Web (existing — Phase 4 P4.4)
+errorBadRequest(
+  'ไม่สามารถบันทึกสิทธิ์ที่อยู่นอกเมนูที่บริษัทเปิดใช้งานได้',
+  'INVALID_MENU_KEY_FOR_COMPANY',
+  { invalidKeys: string[] },
+);
+
+// Mobile (new — Phase 5 W5 BUG FIX)
+errorBadRequest(
+  'ไม่สามารถบันทึกสิทธิ์มือถือที่อยู่นอกเมนูที่บริษัทเปิดใช้งานได้',
+  'INVALID_MOBILE_MENU_KEY_FOR_COMPANY',
+  { invalidKeys: string[] },
+);
+```
+
+#### หลักการ Phase 5 W5
+
+- **Independent path**: web validation + mobile validation ไม่ผูกกัน — web pass แต่ mobile fail → throws mobile error (admin เห็นได้ถึงแม้ web ถูก)
+- **Cache sharing**: 1 `ResolverCache` ส่งให้ทั้ง 2 path → mobile resolver hit `featureIds`+`packageId` cache (saved 2 batch DB calls); เพิ่มแค่ 1 batch `getFeatureMobileMenuKeysRepository`
+- **Early-return**: ถ้า payload `{}` (no leaf keys) → ไม่เรียก resolver (CR M1 carried forward)
+- **Backward compat (mobile validation strictness)**: old clients ที่ไม่ส่ง `permission_mobile` → mobile path skip (no impact); old saves ที่มี invalid mobile keys → reject 400 (intended — bug correction)
+- **Q-A=STRICT propagated to mobile**: `getCompPermissionByUuidController` filter `PermissionMobileDefault` baseline ก่อน `deepMerge(isOwner=true)` → owner ไม่ bypass mobile namespace filter
+- **Error code distinct**: `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` ≠ `INVALID_MENU_KEY_FOR_COMPANY` → frontend สามารถแยก toast/inline message ได้
 
 ---
 

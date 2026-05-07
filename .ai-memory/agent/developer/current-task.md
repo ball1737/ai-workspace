@@ -12,21 +12,92 @@ updated: 2026-05-06
 
 ## Active Task
 
-**Phase 4 Wave 3.5** — Audit Fix Wave: 4 fixes wiring resolver filter into endpoints F4.1 audit flagged
-- Fix 1: `getEmployeePermissionService` (`/auth/user-info` hot path) — filter PermissionDefault baseline + JSONB
-- Fix 2: `getCompPermissionByUuidController` — filter PermissionDefault baseline before deepMerge
-- Fix 3: `getCompPermissionDefaultListController` — accept optional `companyUuid` query param + filter
-- Fix 4: Owner case STRICT (Q-A) — covered transitively by Fix 1+2
+**Phase 5 Wave 8** — Page D Company Features Tab (P5.8.BE.1–4 + P5.8.1–4 + P5.8.V) — both tracks (BE + sale-cms) — done 2026-05-06
+- BE response shape decision: **per-row** `menuKeys`+`mobileMenuKeys` (additive on `CompanyFeatureItem`) **plus** **top-level** `effectiveMenuKeys`+`effectiveMobileMenuKeys` aggregate sets — flexible for both row-level affordances + aggregate side-by-side preview. Backward compat: pre-Wave-8 callers reading `data.list` still work.
+- BE `companyFeature.interface.ts`: `CompanyFeatureItem` += `menuKeys: readonly string[]` + `mobileMenuKeys: readonly string[]`; `CompanyFeatureListResponse` += 2 top-level effective fields
+- BE `companyFeature.adapter.ts`: `computeCompanyFeatureItem` extracts from `feature.menuKeys` + `feature.mobileMenuKeys` (defensive `Array.isArray`)
+- BE `companyFeature.service.getCompanyFeaturesService`: return type → `CompanyFeatureListResponse`; uses `Promise.all` parallel `buildCompanyFeatureList` + `resolveCompanyEffectiveMenuKeysService` + `resolveCompanyEffectiveMobileMenuKeysService` with shared `ResolverCache` (cache hits `featureIds:{companyId}` + `packageId:{companyId}` → 2 batch DB calls only)
+- BE `companyFeature.controller.getCompanyFeaturesController`: pass full envelope through `res.success(result, ...)` (drop `{ list }` wrap)
+- FE `types/store/sale-dashboard-company-features.ts`: `CompanyFeatureItem.{menuKeys?, mobileMenuKeys?}` (optional for backward compat); Root += `effectiveMenuKeys: string[]` + `effectiveMobileMenuKeys: string[]`; `GetCompanyFeaturesResponse` += 2 optional top-level fields
+- FE reducer: defaultState + `sdGetCompanyFeaturesSuccess` populate new fields with `Array.isArray` defensive guard
+- FE NEW `feature-tab/components/company-effective-menus-preview.tsx`: wraps `<MenuTreePreview mode="split">` reading slice `effectiveMenuKeys`/`effectiveMobileMenuKeys` + namespace catalog from `useSaleDashboardFeatureManagement().availableMenuKeys` — created Page-D-specific component (vs reusing Page B's package-effective-menus-preview which reads different slice)
+- FE `company-features-tab-view.tsx`: integrated NEW preview after feature list; lazy-fetch `getAvailableMenuKeys()` only when both web+mobile catalogs empty
+- FE `company-feature-row.tsx`: per-row Web/Mobile menu count chips (icon + count) inside tooltip `companyFeatures.row.menu_keys_tooltip` — render only when count > 0
+- i18n: 5 new keys (en+th parity 42/42): `companyFeatures.effective_menus.{title, subtitle, web_empty, mobile_empty}` + `companyFeatures.row.menu_keys_tooltip`
+- TS pass + prettier conformant on all 11 modified files
+- Decision (component placement): created NEW file in `feature-tab/components/company-effective-menus-preview.tsx` (not refactor `package-management/components/package-effective-menus-preview.tsx`) — Page B preview reads per-PACKAGE state; Page D reads per-COMPANY → state slices intentionally separate; Page B preview keeps single-mode (Wave 6 bridge stable)
 
-Source: `document/requirement/feature-management/f4-1-frontend-audit.md` + Lead-confirmed Q-A=STRICT, Q-B=companyUuid optional, Q-C=no migration
+**Phase 5 Wave 7** — Feature CRUD UI Web|Mobile side-by-side (P5.7.1–P5.7.7 + P5.7.V) — frontend only (sale-cms) — done 2026-05-06
+- `MenuKeysSelect` refactored ใช้ discriminated union `mode: "single" | "split"`; split มี `webOptions/webValue/onWebChange` + mobile counterparts; render Grid xs=12 md=6 cols; internal `MenuKeysColumn` extracted (search + group tristate checkbox tree)
+- `MenuTreePreview` refactored ใช้ discriminated union `mode: "single" | "split"`; split มี `webMenuKeys/mobileMenuKeys` + optional `*AvailableKeys` + per-side `*EmptyMessage`/`*Label`; per-column header = icon + label + count; internal `MenuTreeColumn` extracted
+- `feature-form.tsx` Props type changed `string[]` → `AvailableMenuKeysPayload`; `createFeatureSchema` ขยายรับ `availableMobileMenuKeys`; section "menu_keys" ใช้ `<MenuKeysSelect mode="split">` ผ่าน nested Controller (outer `menuKeys` + inner `mobileMenuKeys`)
+- `feature-form.ts` (utils): `FeatureFormData.mobileMenuKeys: string[]`; `mapFeatureToFormValues` map `feature.mobileMenuKeys ?? []`; `buildCreate*Payload` + `buildUpdate*Payload` ส่ง mobileMenuKeys; Yup schema test `mobile-menu-keys-valid` distinct error key
+- `feature-create-view.tsx` + `feature-edit-view.tsx`: drop Wave 6 bridge `availableMenuKeys.web` + Wave 7 TODO comments; pass `availableMenuKeys` whole object
+- `feature-detail-view.tsx`: render `<MenuTreePreview mode="split">` ส่ง webAvailableKeys + mobileAvailableKeys + per-side empty messages; drop Wave 6 bridge TODO
+- i18n: เพิ่ม keys ใน `featureManagement.{section,form,menu_keys,validation}` (snake_case nested per existing convention) — `web_menu_keys` / `mobile_menu_keys` / helpers / validation / empty states; EN+TH parity verified 64/64 keys (featureManagement subtree only)
+- Backward compat: `mode="single"` defaults preserved สำหรับ `package-effective-menus-preview.tsx` (Wave 8 caller still uses Wave 6 bridge `availableMenuKeys.web`)
+- TS pass + prettier conformant
+- Decision (Q4 i18n): chose nested snake_case (`featureManagement.section.web_menu_keys`) ตาม existing convention `featureManagement.section.menu_keys` — รejected `webMenus` / `menus.web` flat camelCase forms
+- Decision (component API): chose discriminated union (option a) over split-files หรือ force-migration เพราะ
+  - `MenuKeysSelect` มี caller เดียว แต่ keep single mode default → easier rollback ถ้า Wave 7 มีปัญหา
+  - `MenuTreePreview` มี caller `package-effective-menus-preview.tsx` (Wave 8) ที่ยัง bridge — single mode = explicit backward compat path
 
-(Phase 3 — done 2026-05-06; Phase 3 CR Fix Wave — done 2026-05-06; Phase 4 W1 — done 2026-05-06; Phase 4 W2 — done 2026-05-06; Phase 4 W3 audit — done 2026-05-06)
+**Phase 5 Wave 6** — FE sync types + redux + service for mobile menu (P5.6.1–P5.6.2) — frontend only (sale-cms) — done 2026-05-06
+- Types (`sale-dashboard-feature-management.ts`): `Feature.mobileMenuKeys: string[]` (additive); `CreateFeatureRequest.mobileMenuKeys?: string[]` + `UpdateFeatureRequest.data.mobileMenuKeys?: string[]` (optional, backend defaults `[]`); `AvailableMenuKeysResponse` → `AvailableMenuKeysPayload {web, mobile}` (Q3=B BREAKING); Root state `availableMenuKeys: AvailableMenuKeysPayload`
+- Service (`feature-management-request.ts`): JSDoc updated to reflect new `{web, mobile}` shape — no code change needed (typed via `AvailableMenuKeysPayload`)
+- Reducer initial state `{ web: [], mobile: [] }`; `sdGetAvailableMenuKeysSuccess` handler maps backend envelope with per-namespace `Array.isArray` defensive guard
+- Saga + Action: no code change (payload shape extends via TS)
+- Hook `useSaleDashboardFeatureManagement`: `useCallback`-wrapped dispatchers preserved; return type auto-updates
+- 5 caller bridge fix (Wave 7/8 will refactor properly): `availableMenuKeys` → `availableMenuKeys.web` with TODO Wave 7/8 comment in feature-create-view, feature-edit-view, feature-detail-view, package-effective-menus-preview
+- P5.6.3 (company-features slice mobile extension): deferred to Wave 8 — backend `companyFeature` endpoint not extended in Wave 4 (only `/external/auth/permissions` + `/auth/user-info`); Page D currently doesn't need mobile column
+- TS pass + prettier conformant
+
+**Phase 5 Wave 5** — compPermission admin BUG FIX + mobile validation (P5.5.1–P5.5.5) — backend only — done 2026-05-06
+- BUG fix: `assertPermissionKeysWithinCompanyMenusService` (Phase 4 W2) เดิมรวม keys ของทั้ง web + mobile แล้ว validate ผ่าน effective web menu keys → mobile keys ไม่ตรง namespace → admin save mobile permission ถูก reject ทุกครั้ง
+- Split validation: web path (existing — `INVALID_MENU_KEY_FOR_COMPANY`) + mobile path (new — `INVALID_MOBILE_MENU_KEY_FOR_COMPANY`); independent throws (web fails first → throws web; mobile fails second → throws mobile); shared cache (`Promise.all` parallel via mobile path hits `featureIds`+`packageId` cache)
+- `getCompPermissionByUuidService`: filter `permissionMobile` ผ่าน `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (เดิมใช้ web filter+keys ผิด); `Promise.all` parallel resolve web + mobile keys (shared cache)
+- `getCompPermissionByUuidController`: filter `PermissionMobileDefault` baseline ผ่าน mobile filter+keys ก่อน `deepMerge` (เดิมใช้ web `allowedKeys` ทั้ง 2 baseline ผิด)
+- `getCompPermissionDefaultListController`: filter `PermissionMobileDefault` ผ่าน mobile keys (เดิมใช้ web ผิด); `Promise.all` parallel resolve
+- Q-A=STRICT propagated to mobile: ทุก path ใช้ baseline-filter-before-deepMerge → owner ไม่ bypass mobile namespace filter
+- Catch handlers preserve both error codes (`INVALID_MENU_KEY_FOR_COMPANY` + `INVALID_MOBILE_MENU_KEY_FOR_COMPANY`)
+- Early-return optimization (CR M1) คงไว้: empty `{}` payload → no resolver call
+- Backward compat: old clients ที่ไม่ส่ง `permissionMobile` ไม่กระทบ; old saves ที่มี invalid mobile keys → reject 400 (intended bug correction); new error code distinct → frontend Wave 6 surface แยก toast
+- Tests: deferred to Wave 9 per task instruction
+- TS pass + prettier conformant
+
+**Phase 5 Wave 4** — External Auth + user-info wiring สำหรับ mobile (P5.4.1–P5.4.3) — backend only — done 2026-05-06
+- Resolver repository: `getUserPermissionJsonbRepository` extend select `cp.permission_mobile` ใน round trip เดียวกัน
+- Resolver interface: `UserPermissionRow.permissionMobileJsonb: PermissionJsonb | null` (additive)
+- Resolver service: เพิ่ม `resolveUserEffectivePermissionMobileService(userUuid, cache?)` mirror web — graceful `{}` ถ้า `permission_mobile = null` (mobile JSONB ไม่ require)
+- `permissions.service.getPermissionsService`: เพิ่ม mobile resolver call (sequential หลัง web; share `ResolverCache` Map → mobile hits cache สำหรับ `featureIds`/`packageId`); PERMISSION_DATA_NOT_FOUND graceful both branches
+- `permissions.interface.PermissionsResponse.permissionMobile: Record<string, unknown>` additive (backward compat — old web clients no regression)
+- `compPermissionMapping.service.getEmployeePermissionService`: BUG FIX — เดิม mobile branch ใช้ `filterPermissionByMenuKeysService` + web `allowedKeys` ทับ mobile baseline → เปลี่ยนเป็น `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (resolved ผ่าน mobile path); resolver calls parallel ผ่าน `Promise.all` shared cache; Q-A=STRICT enforced ใน mobile
+- Tests: `tests/unit/externalAuth/permissions.service.test.ts` ขยายเป็น 7 cases (cover mobile branches + cache-share assertion + propagate non-graceful errors); 7/7 pass + 100% coverage
+- TS pass + prettier conformant
+
+**Phase 5 Wave 3** — Permission Resolver mirror สำหรับ mobile path (P5.3.1–P5.3.5) — backend only — done 2026-05-06
+- Repository: `getFeatureMobileMenuKeysRepository(featureIds[])` LATERAL unnest + WHERE IN + jsonb_typeof guard
+- Service: `resolveCompanyEffectiveMobileMenuKeysService` (reuse feature-id resolution cache)
+- Service: `filterPermissionMobileByMenuKeysService` + `extractMobileMenuKeysFromPermissionJsonbService` — delegate to web walker (action-key-set-agnostic; mobile leaves เป็น subset ของ web ACTION_KEYS)
+- Interface: cache keys list expanded `mobileMenuKeys:{companyId}` + `packageId:{companyId}`
+- TS pass + prettier conformant; no new tests (deferred to Wave 9)
+
+**Phase 5 Wave 2** — Feature CRUD extension รองรับ `mobileMenuKeys` (P5.2.1–P5.2.5) — backend only
+- Interface: Zod schema `mobileMenuKeys: z.array(z.string()).default([])` + `Feature` type field + `MenuKeysAvailableResponse {web, mobile}` (breaking Q3=B)
+- Repository: INSERT/UPDATE include `mobileMenuKeys` (SELECT auto-included via Objection jsonAttributes)
+- Service: `validateMobileMenuKeys` (mirror web; error code `INVALID_MOBILE_MENU_KEY`); `getAvailableMenuKeysService` returns `{web, mobile}`
+- Adapter: `convertFeatureToResponse` maps `row.mobileMenuKeys` (defensive `Array.isArray`)
+- Controller: `getAvailableMenuKeysController` passes service `{web, mobile}` shape directly (no wrap)
+
+Source: Plan `/Users/ball/.claude/plans/lead-menu-elegant-finch.md` (Q1=D / Q3=B breaking / Q7=A+B / Q8=B)
+
+(Phase 5 W1 + W2 — done 2026-05-06)
 
 ---
 
 ## Active Track
 
-backend
+both (Wave 8 = BE companyFeature endpoint extension + FE Page D side-by-side preview + per-row menu chips)
 
 ---
 
@@ -161,6 +232,80 @@ backend
 | happywork-backend/src/schemas/compPermission.ts | 2026-05-06 | yes | CR-L2 — z.record(z.string(), z.any()) → z.unknown() ทั้ง 6 spot (lines 14,15,37,38,137,138) |
 | happywork-backend/tests/unit/externalAuth/permissions.service.test.ts | 2026-05-06 | yes | CR-H2 — เพิ่ม jest.mock resolver + 2 new test cases (PERMISSION_DATA_NOT_FOUND graceful + PERMISSION_DATA_CORRUPTED propagate); 5/5 pass |
 | document/requirement/feature-management/checklist.md (Phase 4 CR Fix Wave) | 2026-05-06 | yes | Appended new section listing 6 fixed + 1 deferred (L3) with verification log + files modified |
+| happywork-backend/src/database/postgresql/migrations/data/20260504-1000-create-comp_features.ts | 2026-05-06 | no | M1 reference — pattern: tableTemplate + JSONB + GIN index `idx_comp_features_name_gin`; raw SQL for index, not knex schema builder |
+| happywork-backend/src/database/postgresql/migrations/data/20260506-1700-alter-comp_company_features-partial-unique.ts | 2026-05-06 | no | Recent alter migration reference — uses `knex.raw` for index DDL + alterTable for constraint; rollback structure pattern |
+| happywork-backend/src/database/postgresql/migrations/data/20260204-0001-alter-feature_usage-add-feature_action.ts | 2026-05-06 | no | Reference: `alterTable(...table.string(...))` for adding column; up/down symmetric pattern |
+| happywork-backend/src/database/postgresql/migrations/data/20260506-1800-alter-comp_features-add-mobile_menu_keys.ts | 2026-05-06 | yes (created) | M9 — ALTER ADD mobile_menu_keys JSONB NOT NULL DEFAULT '[]'::jsonb + CREATE GIN index `idx_comp_features_mobile_menu_keys_gin`; raw SQL pattern |
+| happywork-backend/src/database/postgresql/migrations/data/20260506-1801-backfill-comp_features-mobile_menu_keys-seed.ts | 2026-05-06 | yes (created) | M10 — backfill 4 SEED tier rows (idempotent: WHERE code AND status_type='active'); user-confirmed mapping; down reverts to [] |
+| happywork-backend/src/database/postgresql/models/data/compFeatures.model.ts | 2026-05-06 | yes | Phase 5 W1 — added mobileMenuKeys: string[] to type + class field + jsonAttributes ['name','description','menuKeys','mobileMenuKeys'] + jsonSchema entry |
+| happywork-backend/src/constant/compPermission.ts | 2026-05-06 | yes | Phase 5 W1 — refactored collectLeafPaths to accept actionKeys param (parameterized walker); added ACTION_KEYS_MOBILE (4 actions, no export); added getAvailableMobileMenuKeys() public export; getAvailableMenuKeys() updated to pass ACTION_KEYS — semantics unchanged for web |
+| document/requirement/feature-management/checklist.md (P5.1.x) | 2026-05-06 | yes | Ticked P5.1.1 (sub-items minus deferred verify), P5.1.2, P5.1.3, P5.1.4, P5.1.5 + file paths + walker-refactor note |
+| document/requirement/feature-management/migration.md (M9/M10 sections) | 2026-05-06 | yes | Updated M9 + M10 to reference final filenames + final mapping + idempotency note + rollback strategy |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.interface.ts | 2026-05-06 | yes | Phase 5 W2 — added `mobileMenuKeys` field in `featureBaseSchema` + `Feature` + `Create/UpdateFeatureRepositoryInput`; added `menuKeysAvailableResponseSchema {web, mobile}` + `MenuKeysAvailableResponse` (Q3=B breaking) |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.repository.ts | 2026-05-06 | yes | Phase 5 W2 — `createFeatureRepository` insert `mobileMenuKeys`; `updateFeatureRepository` patch `mobileMenuKeys` if `!== undefined`; SELECT auto-included via Objection model jsonAttributes |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.service.ts | 2026-05-06 | yes | Phase 5 W2 — added `validateMobileMenuKeys` helper (mirror web; error code `INVALID_MOBILE_MENU_KEY`); integrated in create + update; `getAvailableMenuKeysService` returns `{ web, mobile }` |
+| happywork-backend/src/modules/v2/sale-dashboard/feature/feature.adapter.ts | 2026-05-06 | yes | Phase 5 W2 — `convertFeatureToResponse` maps `row.mobileMenuKeys` with defensive `Array.isArray` guard |
+| happywork-backend/src/api/v2/sale-dashboard/feature/feature.controller.ts | 2026-05-06 | yes | Phase 5 W2 — `getAvailableMenuKeysController` passes service `{web, mobile}` shape directly (Q3=B; removed legacy `{ menuKeys }` wrap) |
+| document/requirement/feature-management/checklist.md (P5.2.x) | 2026-05-06 | yes | Phase 5 W2 ticked all 5 items + sub-bullets covering Zod/repo/service/adapter/controller touchpoints + breaking Q3=B note |
+| document/requirement/feature-management/ssd.md (§3.3 + §4.1) | 2026-05-06 | yes | Phase 5 W2 — Feature interface += mobileMenuKeys; CRUD examples include mobileMenuKeys; `/menu-keys/available` shape changed to `{web, mobile}` (breaking Q3=B annotated) |
+| document/requirement/feature-management/backend.md (§2.1) | 2026-05-06 | yes | Phase 5 W2 — featureBaseSchema += mobileMenuKeys; Feature interface += mobileMenuKeys; service signatures `validateMobileMenuKeys` + `getAvailableMenuKeysService: MenuKeysAvailableResponse` |
+| document/requirement/feature-management/task-list.md (FEAT-810..813) | 2026-05-06 | yes | FEAT-810/811/812/813 marked done (2026-05-06) with FEAT-812 note about INVALID_MOBILE_MENU_KEY error code |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts | 2026-05-06 | yes | Phase 5 W3 — JSDoc cache keys list expanded (mobileMenuKeys + packageId) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts | 2026-05-06 | yes | Phase 5 W3 — added `getFeatureMobileMenuKeysRepository` (LATERAL unnest f.mobile_menu_keys + WHERE IN + status_type=active filter + jsonb_typeof guard) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | yes | Phase 5 W3 — `MOBILE_MENU_KEYS_KEY` const + `resolveCompanyEffectiveMobileMenuKeysService` (reuse feature-ids cache) + `extractMobileMenuKeysFromPermissionJsonbService` (delegate) + `filterPermissionMobileByMenuKeysService` (delegate; walker action-key-set-agnostic) |
+| document/requirement/feature-management/checklist.md (P5.3.x) | 2026-05-06 | yes | Phase 5 W3 ticked all 5 items + sub-bullets covering walker-delegate rationale + cache key extension |
+| document/requirement/feature-management/ssd.md (§6.2 mobile path) | 2026-05-06 | yes | Phase 5 W3 — extended Resolve User Permission Flow with mobile parallel path + 4 cache keys table |
+| document/requirement/feature-management/backend.md (§2.5) | 2026-05-06 | yes | Phase 5 W3 — added 4 mobile resolver signatures + cache keys list + getFeatureMobileMenuKeysRepository signature |
+| happywork-backend/src/modules/v1/externalAuth/permissions.service.ts | 2026-05-06 | yes | Phase 5 W4 — added `resolveUserEffectivePermissionMobileService` call (sequential after web); shared `ResolverCache` Map; both PERMISSION_DATA_NOT_FOUND branches caught graceful → `{}` |
+| happywork-backend/src/modules/v1/externalAuth/permissions.interface.ts | 2026-05-06 | yes | Phase 5 W4 — `PermissionsResponse.permissionMobile: Record<string, unknown>` additive field with JSDoc explaining null-mobile graceful fallback |
+| happywork-backend/src/modules/v1/admin/compPermissionMapping/compPermissionMapping.service.ts | 2026-05-06 | yes | Phase 5 W4 — BUG FIX: mobile baseline filter ใช้ `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (เดิมใช้ web filter ผิด); `Promise.all` parallel resolve web+mobile menu keys (shared cache → featureIds/packageId hit) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.service.ts | 2026-05-06 | yes | Phase 5 W4 — `resolveUserEffectivePermissionMobileService` (mirror web; graceful `{}` ถ้า `permissionMobileJsonb = null`); reuse `getUserPermissionJsonbRepository` |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.repository.ts | 2026-05-06 | yes | Phase 5 W4 — `getUserPermissionJsonbRepository` extend select `cp.permission_mobile`; defensive null handling (object check) |
+| happywork-backend/src/modules/v2/sale-dashboard/permissionResolver/permissionResolver.interface.ts | 2026-05-06 | yes | Phase 5 W4 — `UserPermissionRow.permissionMobileJsonb: PermissionJsonb \| null` additive |
+| happywork-backend/tests/unit/externalAuth/permissions.service.test.ts | 2026-05-06 | yes | Phase 5 W4 — extended to 7 cases covering mobile branch + cache-share + propagate-corrupted; 7/7 pass + 100% line coverage |
+| document/requirement/feature-management/checklist.md (P5.4.x) | 2026-05-06 | yes | Phase 5 W4 ticked all 3 items + bug-fix annotation + cache-share rationale + skeleton-vs-empty-{} clarification |
+| document/requirement/feature-management/ssd.md (§4.5 + §6.2) | 2026-05-06 | yes | Phase 5 W4 — §4.5 extended response example with `permissionMobile`; §6.2 sequence updated to show shared cache + Phase 5 W4 wiring |
+| document/requirement/feature-management/backend.md (§4.3 added) | 2026-05-06 | yes | Phase 5 W4 — new §4.3 "Mobile Path Extension" with file table + service signature + cache + Q-A=STRICT enforcement notes |
+| happywork-backend/src/modules/v1/admin/compPermission/compPermission.service.ts | 2026-05-06 | yes | Phase 5 W5 — split `assertPermissionKeysWithinCompanyMenusService` 2 path independent (web + mobile); `getCompPermissionByUuidService` `Promise.all` parallel resolve web/mobile keys + filter mobile ผ่าน mobile filter (เดิม web filter ผิด); catch handlers preserve `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` |
+| happywork-backend/src/api/v1/admin/compPermission/compPermission.controller.ts | 2026-05-06 | yes | Phase 5 W5 — `getCompPermissionByUuidController` + `getCompPermissionDefaultListController` filter `PermissionMobileDefault` ผ่าน `filterPermissionMobileByMenuKeysService` + `allowedMobileKeys` (เดิมใช้ web `allowedKeys` ผิด); `Promise.all` parallel resolve, shared cache hits featureIds+packageId |
+| document/requirement/feature-management/checklist.md (P5.5.x) | 2026-05-06 | yes | Phase 5 W5 ticked all 5 items + sub-items expanded — BUG fix annotation + Q-A=STRICT propagation note |
+| document/requirement/feature-management/ssd.md (§7) | 2026-05-06 | yes | Phase 5 W5 — added 3 error rows (`INVALID_MOBILE_MENU_KEY` Wave 2, `INVALID_MENU_KEY_FOR_COMPANY` P4.4, `INVALID_MOBILE_MENU_KEY_FOR_COMPANY` Wave 5) |
+| document/requirement/feature-management/backend.md (§4.4 added) | 2026-05-06 | yes | Phase 5 W5 — new §4.4 "compPermission admin BUG FIX + mobile validation" with file table + error codes + cache sharing + backward compat semantics |
+| document/requirement/feature-management/cr-phase4.md | 2026-05-06 | yes | Phase 5 W5 — appended "Post-CR BUG FIX" section explaining how Phase 4 CR §Praise (single helper validation) became wrong after Wave 3+4 mobile namespace existence — Wave 5 splits to 2 path |
+| happywork-sale-cms/src/types/store/sale-dashboard-feature-management.ts | 2026-05-06 | yes | Phase 5 W6 — `Feature.mobileMenuKeys: string[]` additive; `CreateFeatureRequest.mobileMenuKeys?` + `UpdateFeatureRequest.data.mobileMenuKeys?` optional; `AvailableMenuKeysResponse` → `AvailableMenuKeysPayload {web, mobile}` (Q3=B BREAKING); Root state `availableMenuKeys: AvailableMenuKeysPayload` |
+| happywork-sale-cms/src/store/services/feature-management-request.ts | 2026-05-06 | yes | Phase 5 W6 — JSDoc on `getAvailableMenuKeysRequest` reflects new `{web, mobile}` shape; type flow via `AvailableMenuKeysPayload` (no code change) |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-feature-management.ts | 2026-05-06 | yes | Phase 5 W6 — initial state `{ web: [], mobile: [] }`; `sdGetAvailableMenuKeysSuccess` handler maps backend envelope per namespace with `Array.isArray` defensive guard |
+| happywork-sale-cms/src/sections/feature-management/feature-create-view.tsx | 2026-05-06 | yes | Phase 5 W6 bridge — `availableMenuKeys.web` (Wave 7 P5.7.3 TODO) |
+| happywork-sale-cms/src/sections/feature-management/feature-edit-view.tsx | 2026-05-06 | yes | Phase 5 W6 bridge — `availableMenuKeys.web` (Wave 7 P5.7.3 TODO) |
+| happywork-sale-cms/src/sections/feature-management/feature-detail-view.tsx | 2026-05-06 | yes | Phase 5 W7 — `<MenuTreePreview mode="split">` with webMenuKeys + mobileMenuKeys + per-side availableKeys/emptyMessage; Wave 6 bridge TODO removed |
+| happywork-sale-cms/src/sections/package-management/components/package-effective-menus-preview.tsx | 2026-05-06 | yes | Phase 5 W6 bridge — `availableMenuKeys.web.length` check + MenuTreePreview prop (Wave 8 P5.8.1 TODO; W7 single-mode preserved for this caller via discriminated union) |
+| document/requirement/feature-management/checklist.md (P5.6.x) | 2026-05-06 | yes | Phase 5 W6 ticked P5.6.1 + P5.6.2 with sub-items; P5.6.3 deferred to Wave 8 (rationale logged) |
+| document/requirement/feature-management/frontend.md (§3.2) | 2026-05-06 | yes | Phase 5 W6 — State shape now `AvailableMenuKeysPayload`; explanatory paragraph re Q3=B + Wave 7 consumer refactor plan |
+| happywork-sale-cms/src/components/feature-management/menu-keys-select.tsx | 2026-05-06 | yes | Phase 5 W7 — refactored to discriminated union `mode: "single" \| "split"`; internal `MenuKeysColumn` extracted; split mode renders Grid xs=12 md=6 with per-column search + tristate group checkbox tree; backward compat single mode (default) preserved |
+| happywork-sale-cms/src/components/feature-management/menu-tree-preview.tsx | 2026-05-06 | yes | Phase 5 W7 — refactored to discriminated union `mode: "single" \| "split"`; internal `MenuTreeColumn` extracted; split mode renders Grid xs=12 md=6 with per-column header (icon + label + count) + per-side empty message; backward compat single mode (default) preserved for Wave 8 caller |
+| happywork-sale-cms/src/sections/feature-management/components/feature-form.tsx | 2026-05-06 | yes | Phase 5 W7 — `Props.availableMenuKeys` type `string[]` → `AvailableMenuKeysPayload`; section "menu_keys" uses `<MenuKeysSelect mode="split">` via nested Controller (outer menuKeys + inner mobileMenuKeys, field.onChange direct, no useCallback); separate web/mobile error surfaces |
+| happywork-sale-cms/src/sections/feature-management/utils/feature-form.ts | 2026-05-06 | yes | Phase 5 W7 — added `mobileMenuKeys: string[]` to `FeatureFormData` + DEFAULT + `mapFeatureToFormValues`; `createFeatureSchema` accepts `availableMobileMenuKeys?: string[]` + Yup test `mobile-menu-keys-valid`; `buildCreate*Payload` + `buildUpdate*Payload` send `mobileMenuKeys: data.mobileMenuKeys ?? []` |
+| happywork-sale-cms/src/sections/feature-management/feature-create-view.tsx | 2026-05-06 | yes | Phase 5 W7 — drop Wave 6 bridge `availableMenuKeys.web` + TODO comment; pass `availableMenuKeys` whole `AvailableMenuKeysPayload` to FeatureForm |
+| happywork-sale-cms/src/sections/feature-management/feature-edit-view.tsx | 2026-05-06 | yes | Phase 5 W7 — drop Wave 6 bridge `availableMenuKeys.web` + TODO comment; pass `availableMenuKeys` whole `AvailableMenuKeysPayload` to FeatureForm |
+| happywork-sale-cms/src/locales/langs/en.json (featureManagement keys) | 2026-05-06 | yes | Phase 5 W7 — added `section.{web_menu_keys, mobile_menu_keys}` + `form.{web_menu_keys, web_menu_keys_helper, mobile_menu_keys, mobile_menu_keys_helper}` + `menu_keys.{web_empty, mobile_empty, no_web_available, no_mobile_available}` + `validation.mobile_menu_keys_invalid` + reword `validation.menu_keys_invalid` to "Selected web menu key is invalid" |
+| happywork-sale-cms/src/locales/langs/th.json (featureManagement keys) | 2026-05-06 | yes | Phase 5 W7 — TH parity (same keys); EN+TH `featureManagement` subtree count 64/64 verified via JSON-flatten diff |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.interface.ts | 2026-05-06 | yes | Phase 5 W8 — `CompanyFeatureItem` += `menuKeys: readonly string[]` + `mobileMenuKeys: readonly string[]`; `CompanyFeatureListResponse` += `effectiveMenuKeys: readonly string[]` + `effectiveMobileMenuKeys: readonly string[]` (additive — BC preserved) |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.adapter.ts | 2026-05-06 | yes | Phase 5 W8 — `computeCompanyFeatureItem` extracts `feature.menuKeys` + `feature.mobileMenuKeys` per row with defensive `Array.isArray` |
+| happywork-backend/src/modules/v2/sale-dashboard/companyFeature/companyFeature.service.ts | 2026-05-06 | yes | Phase 5 W8 — `getCompanyFeaturesService` return type → `CompanyFeatureListResponse`; `Promise.all` parallel `buildCompanyFeatureList` + 2 resolver calls; shared `ResolverCache` Map → cache hit `featureIds`/`packageId`; sort effective sets for stable response |
+| happywork-backend/src/api/v2/sale-dashboard/companyFeature/companyFeature.controller.ts | 2026-05-06 | yes | Phase 5 W8 — `getCompanyFeaturesController` pass-through full envelope `result` (drop `{ list }` wrap) |
+| happywork-sale-cms/src/types/store/sale-dashboard-company-features.ts | 2026-05-06 | yes | Phase 5 W8 — `CompanyFeatureItem.{menuKeys?, mobileMenuKeys?}` optional (backward compat); Root += `effectiveMenuKeys` + `effectiveMobileMenuKeys`; `GetCompanyFeaturesResponse` += 2 optional top-level fields |
+| happywork-sale-cms/src/store/reducers/sale-dashboard-company-features.ts | 2026-05-06 | yes | Phase 5 W8 — defaultState += effective sets; `sdGetCompanyFeaturesSuccess` populate w/ `Array.isArray` defensive guard |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-effective-menus-preview.tsx | 2026-05-06 | yes (created) | Phase 5 W8 P5.8.1 — NEW Page-D side-by-side preview wrapping `<MenuTreePreview mode="split">`; reads slice `effectiveMenuKeys`/`effectiveMobileMenuKeys` + namespace catalog from `useSaleDashboardFeatureManagement().availableMenuKeys`; useMemo for derived arrays |
+| happywork-sale-cms/src/sections/client-management/feature-tab/company-features-tab-view.tsx | 2026-05-06 | yes | Phase 5 W8 — destructure new state fields; lazy-fetch `getAvailableMenuKeys()` only when both web+mobile catalogs empty; mount `<CompanyEffectiveMenusPreview>` after list |
+| happywork-sale-cms/src/sections/client-management/feature-tab/components/company-feature-row.tsx | 2026-05-06 | yes | Phase 5 W8 P5.8.2 — per-row Web/Mobile menu count chips inside Tooltip; useMemo for counts; only renders when count > 0 (defensive `?? 0` for pre-Wave-8 backend payload) |
+| happywork-sale-cms/src/locales/langs/en.json (companyFeatures keys) | 2026-05-06 | yes | Phase 5 W8 — added `effective_menus.{title, subtitle, web_empty, mobile_empty}` + `row.menu_keys_tooltip` (interpolated `{{web}}`/`{{mobile}}`) |
+| happywork-sale-cms/src/locales/langs/th.json (companyFeatures keys) | 2026-05-06 | yes | Phase 5 W8 — TH parity (5 new keys); EN+TH `companyFeatures` subtree count 42/42 verified via JSON-flatten diff |
+| document/requirement/feature-management/checklist.md (P5.8.x) | 2026-05-06 | yes | Phase 5 W8 — section renamed to include "Backend extension + Frontend"; added P5.8.BE.1-4 (BE) + P5.8.1-4 (FE) + P5.8.V; ticked all 9 items + decision rationale |
+| document/requirement/feature-management/ssd.md (§4.4) | 2026-05-06 | yes | Phase 5 W8 — extended GET response shape with per-row `menuKeys`/`mobileMenuKeys` + top-level `effectiveMenuKeys`/`effectiveMobileMenuKeys`; URL path corrected to `/api/v2/sale-dashboard/companies/...`; performance note re shared cache |
+| document/requirement/feature-management/frontend.md (§1.4) | 2026-05-06 | yes | Phase 5 W8 — extended Client Detail Features Tab spec: per-row chips, NEW `company-effective-menus-preview.tsx` component spec + decision rationale (Page-D-specific component vs reusing Page B) |
+| document/requirement/feature-management/checklist.md (P5.7.x) | 2026-05-06 | yes | Phase 5 W7 ticked P5.7.1–P5.7.7 + P5.7.V with sub-items; added P5.7.6 (Wave 6 bridge cleanup) + P5.7.7 (form utils mobileMenuKeys integration); component-API + i18n decisions logged |
+| document/requirement/feature-management/frontend.md (§1.1 + §2 reusable components) | 2026-05-06 | yes | Phase 5 W7 — Feature Management Create/Detail/Edit pages updated with split UI mention + AvailableMenuKeysPayload references; `menu-keys-select.tsx` + `menu-tree-preview.tsx` reusable component specs rewritten with discriminated union `mode: "single" \| "split"` API |
+| document/requirement/feature-management/prd.md (§5 UI / UX) | 2026-05-06 | yes | Phase 5 W7 — extended Interaction patterns with Web|Mobile namespace selection paragraph; clarified Mobile/responsive note re: namespace vs CMS breakpoint |
 
 ---
 

@@ -253,6 +253,8 @@ export interface Feature {
   readonly name: { th: string; en: string };
   readonly description?: { th: string; en: string };
   readonly menuKeys: string[];
+  // Phase 5 (Wave 2) — mobile parity field. Validated via getAvailableMobileMenuKeys() (4 actions: read/create/update/delete; no export).
+  readonly mobileMenuKeys: string[];
   readonly sortOrder: number;
   readonly statusType: string;
   readonly createdAt: string;
@@ -323,7 +325,7 @@ export interface CompanyFeatureItem {
     "code": 0,
     "msg": "success",
     "data": {
-      "list": [{ "uuid": "...", "code": "payroll", "name": {"th":"เงินเดือน","en":"Payroll"}, "menuKeys": ["payroll.payrollSetting"], "packageCount": 2, "addonCount": 0, "sortOrder": 4, "statusType": "active" }],
+      "list": [{ "uuid": "...", "code": "payroll", "name": {"th":"เงินเดือน","en":"Payroll"}, "menuKeys": ["payroll.payrollSetting"], "mobileMenuKeys": ["payroll.payrollSetting"], "packageCount": 2, "addonCount": 0, "sortOrder": 4, "statusType": "active" }],
       "pagination": { "page": 1, "limit": 20, "total": 14 }
     }
   }
@@ -342,11 +344,13 @@ export interface CompanyFeatureItem {
     "name": { "th": "เงินเดือน", "en": "Payroll" },
     "description": { "th": "...", "en": "..." },
     "menuKeys": ["payroll.payrollSetting", "payroll.payrollProcess"],
+    "mobileMenuKeys": ["payroll.payrollSetting"],
     "sortOrder": 4
   }
   ```
-- Response (201): Feature
-- Errors: 400 (invalid code/menu_keys, duplicate code), 401, 403
+  - `mobileMenuKeys` (Phase 5): `string[]`, optional in update / defaults to `[]` in create. Each key validated against `getAvailableMobileMenuKeys()` (4 actions: read/create/update/delete — no `export`). Empty array = mobile menu locked.
+- Response (201): Feature (includes both `menuKeys` + `mobileMenuKeys`)
+- Errors: 400 (invalid code, duplicate code, `INVALID_MENU_KEY`, `INVALID_MOBILE_MENU_KEY` with `{ invalidKeys: [...] }` payload), 401, 403
 
 #### `PUT /api/v2/sale-dashboard/features/:featureUuid`
 - Body: partial Feature
@@ -357,10 +361,19 @@ export interface CompanyFeatureItem {
 - Errors: 400 (still in use by packages/addons)
 
 #### `GET /api/v2/sale-dashboard/features/menu-keys/available`
-- Response: list of leaf paths from PermissionDefault
+- Response (Phase 5 Wave 2 — **breaking** per Q3=B): list of leaf paths from `PermissionDefault` (web) + `PermissionMobileDefault` (mobile)
   ```json
-  { "code": 0, "data": { "menuKeys": ["dashboard", "payroll.payrollSetting", "timeAttendance.attendance", ...] } }
+  {
+    "code": 0,
+    "data": {
+      "web": ["dashboard", "payroll.payrollSetting.read", "payroll.payrollSetting.create", "timeAttendance.attendance.export", "..."],
+      "mobile": ["payroll.payrollSetting.read", "payroll.payrollSetting.create", "..."]
+    }
+  }
   ```
+  - Legacy field `menuKeys` is REMOVED — frontend Wave 6 must consume `data.web` / `data.mobile` directly.
+  - `web` action set: `read | create | update | delete | export` (5).
+  - `mobile` action set: `read | create | update | delete` (4 — no `export`).
 
 ### 4.2 Package CRUD
 
@@ -388,17 +401,37 @@ export interface CompanyFeatureItem {
 
 ### 4.4 Company Feature Toggle
 
-#### `GET /api/v2/companies/:companyUuid/features`
-- Response: list ของ feature ทั้งหมด พร้อม `enabled` + `source`
+#### `GET /api/v2/sale-dashboard/companies/:companyUuid/features`
+- Response: list ของ feature ทั้งหมด พร้อม `enabled` + `source` + per-row `menuKeys` / `mobileMenuKeys` (Phase 5 W8) + top-level effective sets
+- **Phase 5 W8 (additive, backward compat):**
+  - Each `CompanyFeatureItem` ขยายฟิลด์ `menuKeys: string[]` (web) + `mobileMenuKeys: string[]` (mobile) — verbatim จาก `comp_features`
+  - Top-level `effectiveMenuKeys` + `effectiveMobileMenuKeys` = aggregate union ของ menu keys ที่ company unlock (resolver-resolved, post-override)
+  - Pre-Wave-8 client (Phase 3 reducer) ที่อ่าน `data.list` only → no regression
+- **Performance:** service ใช้ shared `ResolverCache` ระหว่าง `buildCompanyFeatureList` + 2 resolver calls → ทั้ง mobile + web เพิ่มแค่ 2 batch DB calls (`getFeatureMenuKeysRepository` + `getFeatureMobileMenuKeysRepository`); `featureIds:{companyId}` + `packageId:{companyId}` cache hit ระหว่าง 2 calls
   ```json
   {
     "code": 0,
     "data": {
       "list": [
-        { "featureUuid": "...", "featureCode": "payroll", "name": {...}, "enabled": true, "source": "package" },
-        { "featureUuid": "...", "featureCode": "advanced_reporting", "name": {...}, "enabled": true, "source": "override-enabled", "overrideReason": "Trial extension" },
-        { "featureUuid": "...", "featureCode": "ai_chat", "name": {...}, "enabled": false, "source": "default-disabled" }
-      ]
+        {
+          "featureUuid": "...", "featureCode": "payroll", "name": {...},
+          "enabled": true, "source": "package",
+          "menuKeys": ["payroll.payrollSetting", "payroll.payrollRun"],
+          "mobileMenuKeys": ["payroll.payrollRun"]
+        },
+        {
+          "featureUuid": "...", "featureCode": "advanced_reporting", "name": {...},
+          "enabled": true, "source": "override-enabled", "overrideReason": "Trial extension",
+          "menuKeys": ["reporting.advanced"], "mobileMenuKeys": []
+        },
+        {
+          "featureUuid": "...", "featureCode": "ai_chat", "name": {...},
+          "enabled": false, "source": "default-disabled",
+          "menuKeys": ["aiChat.chat"], "mobileMenuKeys": ["aiChat.chat"]
+        }
+      ],
+      "effectiveMenuKeys": ["payroll.payrollRun", "payroll.payrollSetting", "reporting.advanced"],
+      "effectiveMobileMenuKeys": ["payroll.payrollRun"]
     }
   }
   ```
@@ -415,12 +448,29 @@ export interface CompanyFeatureItem {
 - Action: hard delete row ใน `comp_company_features` → กลับไป default จาก package/addon
 - Response (200): updated CompanyFeatureItem
 
-### 4.5 Modified Existing Endpoint (Phase 4)
+### 4.5 Modified Existing Endpoint (Phase 4 + Phase 5 W4)
 
 #### `GET /api/external/auth/v1/permissions/:userUuid`
 - Existing endpoint
-- Phase 4 change: ภายใน `getPermissionsService` → call `resolveUserEffectivePermissionService` ที่ filter JSONB ก่อนตอบ
-- Response: permission JSONB เหมือนเดิม แต่ key ที่ feature ปิดถูกตัดออก
+- Phase 4 change: ภายใน `getPermissionsService` → call `resolveUserEffectivePermissionService` ที่ filter JSONB (web) ก่อนตอบ
+- **Phase 5 W4 change (additive)**: เพิ่ม `permissionMobile` field ใน response — filter ผ่าน `resolveUserEffectivePermissionMobileService`
+  - Backward compat: web clients เดิมที่ไม่อ่าน field ใหม่ → no regression
+  - Mobile-aware client (HappyWork mobile app) → consume `permissionMobile` แทน `permission`
+- **Response shape**:
+  ```json
+  {
+    "code": 0,
+    "msg": "...",
+    "data": {
+      "userUuid": "<uuid>",
+      "isAdmin": false,
+      "permission": { /* web JSONB filtered ผ่าน effective web menu keys */ },
+      "permissionMobile": { /* mobile JSONB filtered ผ่าน effective mobile menu keys */ }
+    }
+  }
+  ```
+- **Empty fallback**: ถ้า user ไม่มี mapping หรือ `permission_mobile` = NULL → `permissionMobile = {}` (graceful — Phase 4 W1 pattern; **ไม่ใช่** skeleton)
+- **Performance**: in-request `ResolverCache` shared ระหว่าง web + mobile path → mobile call hit cache สำหรับ `featureIds:{companyId}` + `packageId:{companyId}`; เพิ่มแค่ 1 batch DB call (`getFeatureMobileMenuKeysRepository`)
 
 ## 5. Frontend Components / Pages
 
@@ -496,14 +546,17 @@ export interface CompanyFeatureItem {
       ↓
 [Backend] permissions.controller.getPermissionsController(userUuid)
       ↓
-[Service] permissions.service.getPermissionsService(userUuid):
+[Service] permissions.service.getPermissionsService(userUuid):                       -- (Phase 5 W4 wires both paths)
   - load comp_permission_mapping by userUuid → permissionId
-  - load comp_permission by permissionId → permissionJsonb
+  - load comp_permission by permissionId → permissionJsonb + permissionMobileJsonb   -- (Phase 5 W4: select cp.permission_mobile in same query)
   - load user → companyId
-  - call resolveCompanyEffectiveMenuKeysService(companyId)
+  - new ResolverCache Map (shared between web + mobile to dedupe featureIds + packageId)
+  - call resolveUserEffectivePermissionService(userUuid, cache)                      -- web (Phase 4 W1)
+  - call resolveUserEffectivePermissionMobileService(userUuid, cache)                -- mobile (Phase 5 W4)
+  - graceful fallback: PERMISSION_DATA_NOT_FOUND → empty {} (per branch); permission_mobile NULL → {} (no error)
       ↓
-[Resolver] permissionResolver.service.resolveCompanyEffectiveMenuKeysService:
-  - load company → package_id (cached per request)
+[Resolver] permissionResolver.service.resolveCompanyEffectiveFeatureIdsService (shared):
+  - load company → package_id (cached per request via `packageId:{companyId}`)
   - load package_features by package_id → featureIds (filter: feature.status_type='active')
   - load ACTIVE company_addons by company_id → addonIds
       → SQL: WHERE company_id=? AND (expires_at IS NULL OR expires_at > NOW())   -- Q3=A
@@ -511,17 +564,24 @@ export interface CompanyFeatureItem {
   - load comp_company_features by company_id → overrides
       (filter: override.feature.status_type='active')                              -- Q4=B
   - effective featureIds = union − overrides[disabled] + overrides[enabled]
-  - load features by ids → menu_keys → flatten + dedupe
-  - return Set<string>
+  - cached via `featureIds:{companyId}` (in-request memo)
       ↓
-[Resolver] filterPermissionByMenuKeysService(permissionJsonb, allowedMenuKeys):
+[Resolver] resolveCompanyEffectiveMenuKeysService (web path):
+  - reuse featureIds (cache hit) → getFeatureMenuKeysRepository (LATERAL unnest f.menu_keys)
+  - flatten + dedupe → Set<string>; cached via `menuKeys:{companyId}`
+[Resolver] resolveCompanyEffectiveMobileMenuKeysService (mobile path — Phase 5 W3):
+  - reuse featureIds (same cache hit) → getFeatureMobileMenuKeysRepository (LATERAL unnest f.mobile_menu_keys)
+  - flatten + dedupe → Set<string>; cached via `mobileMenuKeys:{companyId}`
+      ↓
+[Resolver] filterPermissionByMenuKeysService(permissionJsonb, allowedMenuKeys)               -- web
+[Resolver] filterPermissionMobileByMenuKeysService(permissionMobileJsonb, allowedMobileKeys) -- mobile (Phase 5 W3, delegate to web walker; leaf-detection action-key-set-agnostic)
   - recursive walk JSONB tree
   - leaf check: if path in allowedMenuKeys → keep, else drop
   - return filtered JSONB
       ↓
-[Backend] res.success(filteredPermission)
+[Backend] res.success({ permission: filteredWeb, permissionMobile: filteredMobile })
       ↓
-[End user app] Render menus from filtered JSONB
+[End user app] Render menus from filtered JSONB (web app uses `permission`; mobile app uses `permissionMobile`)
 ```
 
 ### 6.3 Toggle Company Feature Flow
@@ -549,6 +609,9 @@ export interface CompanyFeatureItem {
 |----------|---------|-----------|
 | Feature code already exists | 400 + AppError 'CODE_EXISTS' | warn |
 | Menu key not in PermissionDefault | 400 + AppError 'INVALID_MENU_KEY' | warn |
+| Mobile menu key not in PermissionMobileDefault (Phase 5 W2) | 400 + AppError 'INVALID_MOBILE_MENU_KEY' | warn |
+| Admin saves `permission` with menu key outside company's effective **web** menus (Phase 4 W2) | 400 + CustomError 'INVALID_MENU_KEY_FOR_COMPANY' (พร้อม `data.invalidKeys`) | warn |
+| Admin saves `permission_mobile` with menu key outside company's effective **mobile** menus (Phase 5 W5 BUG FIX) | 400 + CustomError 'INVALID_MOBILE_MENU_KEY_FOR_COMPANY' (พร้อม `data.invalidKeys`) | warn |
 | Feature delete blocked (in use) | 400 + AppError 'FEATURE_IN_USE' (พร้อม count) | info |
 | Package delete blocked (companies using) | 400 + AppError 'PACKAGE_IN_USE' | info |
 | Addon: is_quantifiable=true ขาด max_quantity | 400 + AppError 'MAX_QUANTITY_REQUIRED' | warn |
