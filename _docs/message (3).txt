@@ -1,0 +1,43 @@
+  # Step 1: Audit — ตรวจ duplicate emails (dry run)
+curl -X POST http://localhost:3021/api/v1/sync/clone/audit \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
+
+curl -X POST https://api-hwv4.jenosize.dev/core/api/v1/sync/clone/audit \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
+
+curl -X POST https://api-stg-hwv4.happyworkapp.com/core/api/v1/sync/clone/audit \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
+
+  # Step 2: Execute — รัน clone (idempotent — รันซ้ำได้ จะ clone เฉพาะ user ที่ยังไม่ sync)
+curl -X POST http://localhost:3021/api/v1/sync/clone/execute \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk" \
+    -H "Content-Type: application/json"
+
+curl -X POST https://api-hwv4.jenosize.dev/core/api/v1/sync/clone/execute \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk" \
+    -H "Content-Type: application/json"
+
+curl -X POST https://api-stg-hwv4.happyworkapp.com/core/api/v1/sync/clone/execute \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk" \
+    -H "Content-Type: application/json"
+
+  # ถ้ามี duplicate emails แต่ต้องการ force
+  curl -X POST http://localhost:3021/api/v1/sync/clone/execute \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk" \
+    -H "Content-Type: application/json" \
+    -d '{"force": true}'
+
+  curl -X POST http://localhost:3021/api/v1/sync/clone/execute \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk" \
+    -H "Content-Type: application/json" \
+    -d '{"resync": true}'
+
+  # Step 3: Verify — ตรวจผลลัพธ์
+curl -X POST http://localhost:3021/api/v1/sync/clone/verify \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
+
+curl -X POST https://api-hwv4.jenosize.dev/core/api/v1/sync/clone/verify \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
+
+curl -X POST https://api-stg-hwv4.happyworkapp.com/core/api/v1/sync/clone/verify \
+    -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGllbnRfaWQiOiI2YTA3YWFiNC05ZWViLTRlZWUtODQyOC0yMjk5MTZkMjZiMjYiLCJjcmVkZW50aWFsX3R5cGUiOiJzeXN0ZW0iLCJjcmVkZW50aWFsX293bmVyIjoic3lzdGVtIiwiaWF0IjoxNzM2NDcyNTU2LCJleHAiOjQ4OTIyMzI1NTZ9.Ir8-LbV8mIRgI_UybynFc8DhKWnH_TrW29q9ct9SQYk"
